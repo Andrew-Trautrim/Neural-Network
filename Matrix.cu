@@ -10,6 +10,8 @@
 
 const int THREADS_PER_DIM = 16;
 
+int seed = 0;
+
 Matrix::Matrix(int rows, int cols) : _rows(rows), _cols(cols)
 {
     cudaError_t err = cudaMallocManaged(&_data, _rows * _cols * sizeof(double));
@@ -303,10 +305,24 @@ void Matrix::reshape(int m, int n)
 
 void Matrix::randomize()
 {
-    for (int i = 0; i < _rows * _cols; ++i)
-    {
-        _data[i] = ((double)rand() / RAND_MAX) * 10;
-    }
+    // Set kernal parameters
+    int blocks_y = (_rows + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (_cols + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+    dim3 BLOCKS(blocks_x, blocks_y);
+
+    // Setup seeds
+    curandState *states;
+    cudaMalloc(&states, _rows * _cols * sizeof(curandState));
+    MatrixKernals::setup_random_states<<<BLOCKS,THREADS>>>(states, seed++, _rows, _cols);
+    cudaDeviceSynchronize();
+
+    // Randomize values between 0 and 10
+    MatrixKernals::randomize<<<BLOCKS,THREADS>>>(states, _data, _rows, _cols, 0, 10);
+    cudaDeviceSynchronize();
+
+    cudaFree(states);
 }
 
 void Matrix::zero()

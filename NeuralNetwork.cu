@@ -8,8 +8,8 @@
 
 struct propagate_cache
 {
-    std::vector<Matrix> Z;
-    std::vector<Matrix> A;
+    Matrix* Z;
+    Matrix* A;
 };
 
 class NeuralNetwork
@@ -30,6 +30,12 @@ class NeuralNetwork
             complete = false;
 
             initializeParameters(layer_sizes);
+        }
+
+        ~NeuralNetwork()
+        {
+            free(W);
+            free(b);
         }
 
         void Model()
@@ -74,20 +80,24 @@ class NeuralNetwork
         int num_layers;
 
         // parameters
-        std::vector<Matrix> W;
-        std::vector<Matrix> b;
+        Matrix* W;
+        Matrix* b;
 
         void initializeParameters(std::vector<int> layer_sizes)
         {
+            W = (Matrix*)malloc(num_layers * sizeof(Matrix));
+            b = (Matrix*)malloc(num_layers * sizeof(Matrix));
+
             int prev_layer_size = training_set_X.rows();
-            for (int i = 0; i < layer_sizes.size(); ++i)
+            for (int i = 0; i < num_layers; ++i)
             {
-                W.push_back(Matrix(layer_sizes[i], prev_layer_size));
-                b.push_back(Matrix(layer_sizes[i], 1));
-                prev_layer_size = layer_sizes[i];
+                W[i] = Matrix(layer_sizes[i], prev_layer_size);
+                b[i] = Matrix(layer_sizes[i], 1);
 
                 W[i].randomize();
                 b[i].randomize();
+
+                prev_layer_size = layer_sizes[i];
             }
         }
 
@@ -95,15 +105,18 @@ class NeuralNetwork
         {
             // We need to cache Z and A values for back propagation
             propagate_cache cache;
+            cache.Z = (Matrix*)malloc(num_layers * sizeof(Matrix));
+            cache.A = (Matrix*)malloc(num_layers * sizeof(Matrix));
 
-            Matrix A = training_set_X;
+            Matrix prev_A = training_set_X;
             for (int i = 0; i < num_layers; ++i)
             {
-                cache.Z.push_back(W[i].dot(A) + b[i]);
-                A = i == num_layers - 1
+                cache.Z[i] = W[i].dot(prev_A) + b[i];
+                cache.A[i] = i == num_layers - 1
                     ? Matrix::sigmoid(cache.Z[i])
                     : Matrix::tanh(cache.Z[i]);
-                cache.A.push_back(A);
+
+                prev_A = cache.A[i];
             }
 
             return cache;

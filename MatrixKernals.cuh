@@ -1,4 +1,6 @@
 #include <cuda_runtime.h>
+#include <curand.h>
+#include <curand_kernel.h>
 
 namespace MatrixKernals
 {
@@ -14,11 +16,14 @@ namespace MatrixKernals
     __global__ void divide(double* a, double* b, double* c, int m, int n);
 
     __global__ void dot(double* a, double* b, double* c, int a_m, int a_n, int b_m, int b_n);
-
-    __global__ void transpose(double* a, double* b, int m, int n);
     
     __global__ void add(double* a, double num, double* b, int m, int n);
     __global__ void multiply(double* a, double num, double* b, int m, int n);
+
+    __global__ void transpose(double* a, double* b, int m, int n);
+
+    __global__ void setup_random_states(curandState* state, unsigned long seed, int m, int n);
+    __global__ void randomize(curandState* state, double* a, int m, int n, int min, int max);
 
     __global__ void sigmoid(double* a, double* b, int m, int n);
     __global__ void tanh(double* a, double* b, int m, int n);

@@ -141,20 +141,6 @@ namespace MatrixKernals
             c[idx] += a[row * a_n + i] * b[i * b_n + col];
         }
     }
-    
-    __global__ void transpose(double* a, double* b, int m, int n)
-    {
-        // Calculate row + col for each thread
-        int row = blockIdx.y * blockDim.y + threadIdx.y;
-        int col = blockIdx.x * blockDim.x + threadIdx.x;
-
-        if (row >= m || col >= n)
-        {
-            return;
-        }
-
-        b[col * m + row] = a[row * n + col];
-    }
 
     __global__ void add(double* a, double num, double* b, int m, int n)
     {
@@ -184,6 +170,56 @@ namespace MatrixKernals
 
         int i = row * n + col;
         b[i] = a[i] * num; 
+    }
+    
+    __global__ void transpose(double* a, double* b, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+
+        b[col * m + row] = a[row * n + col];
+    }
+    
+    __global__ void setup_random_states(curandState* state, unsigned long seed, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+        
+        int i = col * m + row;
+        curand_init(seed, i, 0, &state[i]);
+    }
+
+    __global__ void randomize(curandState* state, double* a, int m, int n, int min, int max)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+        
+        int i = col * m + row;
+
+        // get random number between min and max
+        curandState localState = state[i];
+        double r = (curand_uniform(&localState) * (max - min)) + min;
+        state[i] = localState;
+
+        a[i] = r;
     }
 
     __global__ void sigmoid(double* a, double* b, int m, int n)
