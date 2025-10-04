@@ -23,11 +23,20 @@ Matrix::Matrix(int rows, int cols) : _rows(rows), _cols(cols)
     zero();
 }
 
-Matrix::Matrix(const Matrix& other)
+Matrix::Matrix(const Matrix& other) : _rows(other.rows()), _cols(other.cols())
 {
-    _rows = other.rows();
-    _cols = other.cols();
-    cudaMemcpy(_data, other.data(), _rows * _cols * sizeof(double), cudaMemcpyHostToDevice);
+    cudaError_t err = cudaMallocManaged(&_data, _rows * _cols * sizeof(double));
+    if (err != cudaSuccess)
+    {
+        throw std::runtime_error(cudaGetErrorString(err));
+    }
+    
+    err = cudaMemcpy(_data, other.data(), _rows * _cols * sizeof(double), cudaMemcpyHostToDevice);
+    if (err != cudaSuccess)
+    {
+        cudaFree(_data);
+        throw std::runtime_error(cudaGetErrorString(err));
+    }
 }
 
 Matrix::~Matrix()

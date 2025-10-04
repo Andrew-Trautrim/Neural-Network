@@ -12,6 +12,7 @@ class Matrix
         int cols() const;
         double* data() const;
 
+        Matrix operator=(const Matrix& other) const;
         Matrix operator+(const Matrix& other) const;
         Matrix operator-(const Matrix& other) const;
         Matrix operator*(const Matrix& other) const;
