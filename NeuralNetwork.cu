@@ -38,9 +38,9 @@ class NeuralNetwork
             free(b);
         }
 
-        void Model()
+        void model()
         {
-            if (!complete)
+            if (complete)
             {
                 throw std::logic_error("Neural network already completed learning."); 
             }
@@ -49,6 +49,9 @@ class NeuralNetwork
             {
                 propagate_cache cache = forward_propagation();
                 backward_propagation(cache);
+
+                free(cache.Z);
+                free(cache.A);
             }
 
             complete = true;

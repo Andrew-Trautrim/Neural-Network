@@ -12,9 +12,9 @@ const int THREADS_PER_DIM = 16;
 
 int seed = 0;
 
-Matrix::Matrix(int rows, int cols) : _rows(rows), _cols(cols)
+Matrix::Matrix(int m, int n) : m(m), n(n)
 {
-    cudaError_t err = cudaMallocManaged(&_data, _rows * _cols * sizeof(double));
+    cudaError_t err = cudaMallocManaged(&data, m * n * sizeof(double));
     if (err != cudaSuccess)
     {
         throw std::runtime_error(cudaGetErrorString(err));
@@ -23,75 +23,71 @@ Matrix::Matrix(int rows, int cols) : _rows(rows), _cols(cols)
     zero();
 }
 
-Matrix::Matrix(const Matrix& other) : _rows(other.rows()), _cols(other.cols())
+// TODO: make this better so we're not doing a deep copy for every = assignment
+Matrix::Matrix(const Matrix& other) : m(other.m), n(other.n)
 {
-    cudaError_t err = cudaMallocManaged(&_data, _rows * _cols * sizeof(double));
+    cudaError_t err = cudaMallocManaged(&data, m * n * sizeof(double));
     if (err != cudaSuccess)
     {
         throw std::runtime_error(cudaGetErrorString(err));
     }
     
-    err = cudaMemcpy(_data, other.data(), _rows * _cols * sizeof(double), cudaMemcpyHostToDevice);
+    err = cudaMemcpy(data, other.data, m * n * sizeof(double), cudaMemcpyHostToDevice);
     if (err != cudaSuccess)
     {
-        cudaFree(_data);
+        cudaFree(data);
         throw std::runtime_error(cudaGetErrorString(err));
     }
 }
 
 Matrix::~Matrix()
 {
-    cudaFree(_data);
+    cudaFree(data);
 }
 
 int Matrix::rows() const
 {
-    return _rows;
+    return m;
 }
 
 int Matrix::cols() const
 {
-    return _cols;
-}
-
-double* Matrix::data() const
-{
-    return _data;
+    return n;
 }
 
 Matrix Matrix::operator+(const Matrix& other) const
 {
     // Set kernal parameters
-    int blocks_y = (_rows + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (_cols + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
     dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
     dim3 BLOCKS(blocks_x, blocks_y);
     
-    Matrix result(_rows, _cols);
+    Matrix result(m, n);
 
-    if (_rows == other.rows() && _cols == other.cols())
+    if (m == other.m && n == other.n)
     {
-        MatrixKernals::add<<<BLOCKS,THREADS>>>(_data, other.data(), result.data(), _rows, _cols);
+        MatrixKernals::add<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
         cudaDeviceSynchronize();
     }
-    else if (_rows == other.rows() && other.cols() == 1)
+    else if (m == other.m && other.n == 1)
     {
-        MatrixKernals::add_broadcast_horizontal<<<BLOCKS,THREADS>>>(_data, other.data(), result.data(), _rows, _cols);
+        MatrixKernals::add_broadcast_horizontal<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
         cudaDeviceSynchronize();
     }
-    else if (_cols == other.cols() && other.rows() == 1)
+    else if (n == other.n && other.m == 1)
     {
-        MatrixKernals::add_broadcast_vertical<<<BLOCKS,THREADS>>>(_data, other.data(), result.data(), _rows, _cols);
+        MatrixKernals::add_broadcast_vertical<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
         cudaDeviceSynchronize();
     }
     else 
     {
         std::ostringstream err;
         err << "Invalid dimensions: cannot add "
-            << _rows << "x" << _cols
+            << m << "x" << n
             << " matrix to "
-            << other.rows() << "x" << other.cols()
+            << other.m << "x" << other.n
             << " matrix.";
         throw std::invalid_argument(err.str()); 
     }
@@ -102,36 +98,36 @@ Matrix Matrix::operator+(const Matrix& other) const
 Matrix Matrix::operator-(const Matrix& other) const
 {
     // Set kernal parameters
-    int blocks_y = (_rows + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (_cols + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
     dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
     dim3 BLOCKS(blocks_x, blocks_y);
     
-    Matrix result(_rows, _cols);
+    Matrix result(m, n);
 
-    if (_rows == other.rows() && _cols == other.cols())
+    if (m == other.m && n == other.n)
     {
-        MatrixKernals::subtract<<<BLOCKS,THREADS>>>(_data, other.data(), result.data(), _rows, _cols);
+        MatrixKernals::subtract<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
         cudaDeviceSynchronize();
     }
-    else if (_rows == other.rows() && other.cols() == 1)
+    else if (m == other.m && other.n == 1)
     {
-        MatrixKernals::subtract_broadcast_horizontal<<<BLOCKS,THREADS>>>(_data, other.data(), result.data(), _rows, _cols);
+        MatrixKernals::subtract_broadcast_horizontal<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
         cudaDeviceSynchronize();
     }
-    else if (_cols == other.cols() && other.rows() == 1)
+    else if (n == other.n && other.m == 1)
     {
-        MatrixKernals::subtract_broadcast_vertical<<<BLOCKS,THREADS>>>(_data, other.data(), result.data(), _rows, _cols);
+        MatrixKernals::subtract_broadcast_vertical<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
         cudaDeviceSynchronize();
     }
     else 
     {
         std::ostringstream err;
         err << "Invalid dimensions: cannot subtract "
-            << other.rows() << "x" << other.cols()
+            << other.m << "x" << other.n
             << " matrix from "
-            << _rows << "x" << _cols
+            << m << "x" << n
             << " matrix.";
         throw std::invalid_argument(err.str()); 
     }
@@ -141,28 +137,28 @@ Matrix Matrix::operator-(const Matrix& other) const
 
 Matrix Matrix::operator*(const Matrix& other) const
 {
-    if (_rows != other.rows() || _cols != other.cols())
+    if (m != other.m || n != other.n)
     {
         std::ostringstream err;
         err << "Invalid dimensions: cannot multiply "
-            << _rows << "x" << _cols
+            << m << "x" << n
             << " matrix with "
-            << other.rows() << "x" << other.cols()
+            << other.m << "x" << other.n
             << " matrix.";
         throw std::invalid_argument(err.str()); 
     }
 
-    Matrix result(_rows, _cols);
+    Matrix result(m, n);
 
     // Set kernal parameters
-    int blocks_y = (_rows + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (_cols + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
     dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::multiply<<<BLOCKS,THREADS>>>(_data, other.data(), result.data(), _rows, _cols);
+    MatrixKernals::multiply<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
     cudaDeviceSynchronize();
 
     return result;
@@ -170,28 +166,28 @@ Matrix Matrix::operator*(const Matrix& other) const
 
 Matrix Matrix::operator/(const Matrix& other) const
 {
-    if (_rows != other.rows() || _cols != other.cols())
+    if (m != other.m || n != other.n)
     {
         std::ostringstream err;
         err << "Invalid dimensions: cannot divide "
-            << _rows << "x" << _cols
+            << m << "x" << n
             << " matrix with "
-            << other.rows() << "x" << other.cols()
+            << other.m << "x" << other.n
             << " matrix.";
         throw std::invalid_argument(err.str()); 
     }
 
-    Matrix result(_rows, _cols);
+    Matrix result(m, n);
 
     // Set kernal parameters
-    int blocks_y = (_rows + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (_cols + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
     dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::divide<<<BLOCKS,THREADS>>>(_data, other.data(), result.data(), _rows, _cols);
+    MatrixKernals::divide<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
     cudaDeviceSynchronize();
 
     return result;
@@ -199,17 +195,17 @@ Matrix Matrix::operator/(const Matrix& other) const
 
 Matrix Matrix::operator+(double num) const
 {
-    Matrix result(_rows, _cols);
+    Matrix result(m, n);
 
     // Set kernal parameters
-    int blocks_y = (_rows + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (_cols + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
     dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::add<<<BLOCKS,THREADS>>>(_data, num, result.data(), _rows, _cols);
+    MatrixKernals::add<<<BLOCKS,THREADS>>>(data, num, result.data, m, n);
     cudaDeviceSynchronize();
 
     return result;
@@ -217,17 +213,17 @@ Matrix Matrix::operator+(double num) const
 
 Matrix Matrix::operator*(double num) const
 {
-    Matrix result(_rows, _cols);
+    Matrix result(m, n);
 
     // Set kernal parameters
-    int blocks_y = (_rows + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (_cols + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
     dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::multiply<<<BLOCKS,THREADS>>>(_data, num, result.data(), _rows, _cols);
+    MatrixKernals::multiply<<<BLOCKS,THREADS>>>(data, num, result.data, m, n);
     cudaDeviceSynchronize();
 
     return result;
@@ -235,29 +231,29 @@ Matrix Matrix::operator*(double num) const
 
 Matrix Matrix::dot(const Matrix& other) const
 {
-    if (_cols != other.rows())
+    if (n != other.m)
     {
         std::ostringstream err;
         err << "Invalid dimensions: cannot dot "
-            << _rows << "x" << _cols
+            << m << "x" << n
             << " matrix with "
-            << other.rows() << "x" << other.cols()
+            << other.m << "x" << other.n
             << " matrix.";
         throw std::invalid_argument(err.str()); 
     }
 
     // Multpliplying an a_m x a_n matrix with an b_m x b_n matrix results in an a_m x b_n matrix.
-    Matrix result(_rows, other.cols());
+    Matrix result(m, other.n);
 
     // Set kernal parameters
-    int blocks_y = (_rows + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (other.cols() + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (other.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
     dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::dot<<<BLOCKS,THREADS>>>(_data, other.data(), result.data(), _rows, _cols, other.rows(), other.cols());
+    MatrixKernals::dot<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n, other.m, other.n);
     cudaDeviceSynchronize();
 
     return result;
@@ -266,17 +262,17 @@ Matrix Matrix::dot(const Matrix& other) const
 Matrix Matrix::transpose() const
 {
     // The transpose of an MxN matrix is an NxM matrix
-    Matrix result(_cols, _rows);
+    Matrix result(n, m);
 
     // Set kernal parameters
-    int blocks_y = (_rows + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (_cols + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
     dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::transpose<<<BLOCKS,THREADS>>>(_data, result.data(), _rows, _cols);
+    MatrixKernals::transpose<<<BLOCKS,THREADS>>>(data, result.data, m, n);
     cudaDeviceSynchronize();
 
     return result;
@@ -285,10 +281,10 @@ Matrix Matrix::transpose() const
 void Matrix::print()
 {
     std::cout << std::fixed << std::setprecision(2);
-    for (int i = 0; i < _rows * _cols; ++i)
+    for (int i = 0; i < m * n; ++i)
     {
-        std::cout << std::setw(5) << _data[i] << "  ";
-        if ((i+1) % _cols == 0)
+        std::cout << std::setw(5) << data[i] << "  ";
+        if ((i+1) % n == 0)
         {
             std::cout << std::endl;
         }
@@ -297,38 +293,38 @@ void Matrix::print()
 
 void Matrix::reshape(int m, int n)
 {
-    if (_rows * _cols != m * n)
+    if (this->m * this->n != m * n)
     {
         std::ostringstream err;
         err << "Cannot reshape "
-            << _rows << "x" << _cols
+            << this->m << "x" << this->n
             << " to "
             << m << "x" << n
             << " matrix.";
         throw std::invalid_argument(err.str()); 
     }
 
-    _rows = m;
-    _cols = n;
+    this->m = m;
+    this->n = n;
 }
 
 void Matrix::randomize()
 {
     // Set kernal parameters
-    int blocks_y = (_rows + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (_cols + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
     dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Setup seeds
     curandState *states;
-    cudaMalloc(&states, _rows * _cols * sizeof(curandState));
-    MatrixKernals::setup_random_states<<<BLOCKS,THREADS>>>(states, seed++, _rows, _cols);
+    cudaMalloc(&states, m * n * sizeof(curandState));
+    MatrixKernals::setup_random_states<<<BLOCKS,THREADS>>>(states, seed++, m, n);
     cudaDeviceSynchronize();
 
     // Randomize values between 0 and 10
-    MatrixKernals::randomize<<<BLOCKS,THREADS>>>(states, _data, _rows, _cols, 0, 10);
+    MatrixKernals::randomize<<<BLOCKS,THREADS>>>(states, data, m, n, -1, 1);
     cudaDeviceSynchronize();
 
     cudaFree(states);
@@ -336,23 +332,23 @@ void Matrix::randomize()
 
 void Matrix::zero()
 {
-    cudaMemset(_data, 0, _rows * _cols * sizeof(double));
+    cudaMemset(data, 0, m * n * sizeof(double));
 }
 
 // Static functions
 Matrix Matrix::sigmoid(const Matrix& a)
 {
-    Matrix result(a.rows(), a.cols());
+    Matrix result(a.m, a.n);
 
     // Set kernal parameters
-    int blocks_y = (a.rows() + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (a.cols() + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
     dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::sigmoid<<<BLOCKS,THREADS>>>(a.data(), result.data(), a.rows(), a.cols());
+    MatrixKernals::sigmoid<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
     cudaDeviceSynchronize();
 
     return result;
@@ -360,17 +356,17 @@ Matrix Matrix::sigmoid(const Matrix& a)
 
 Matrix Matrix::tanh(const Matrix& a)
 {
-    Matrix result(a.rows(), a.cols());
+    Matrix result(a.m, a.n);
 
     // Set kernal parameters
-    int blocks_y = (a.rows() + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (a.cols() + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
     dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::tanh<<<BLOCKS,THREADS>>>(a.data(), result.data(), a.rows(), a.cols());
+    MatrixKernals::tanh<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
     cudaDeviceSynchronize();
 
     return result;
@@ -379,9 +375,9 @@ Matrix Matrix::tanh(const Matrix& a)
 double Matrix::sum(const Matrix& a)
 {
     double sum = 0;
-    for (int i = 0, n = a.rows() * a.cols(); i < n; ++i)
+    for (int i = 0, n = a.m * a.n; i < n; ++i)
     {
-        sum += a.data()[i];
+        sum += a.data[i];
     }
 
     return sum;

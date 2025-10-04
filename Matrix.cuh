@@ -4,15 +4,13 @@
 class Matrix
 {
     public:
-        Matrix(int rows, int cols);
+        Matrix(int m, int n);
         Matrix(const Matrix& other);
         ~Matrix();
 
         int rows() const;
         int cols() const;
-        double* data() const;
 
-        Matrix operator=(const Matrix& other) const;
         Matrix operator+(const Matrix& other) const;
         Matrix operator-(const Matrix& other) const;
         Matrix operator*(const Matrix& other) const;
@@ -24,7 +22,7 @@ class Matrix
         Matrix dot(const Matrix& other) const;
         Matrix transpose() const;
 
-        void reshape(int rows, int cols);
+        void reshape(int m, int n);
         void randomize();
         void zero();
         void print();
@@ -34,9 +32,9 @@ class Matrix
         static double sum(const Matrix& a);
 
     private:
-        int _rows;
-        int _cols;
-        double* _data;
+        int m;
+        int n;
+        double* data;
 };
 
 #endif // MATRIX_H
