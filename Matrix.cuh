@@ -27,8 +27,12 @@ class Matrix
         void zero();
         void print();
 
+        static Matrix cross_entropy(const Matrix& a, const Matrix& b);
         static Matrix sigmoid(const Matrix& a);
         static Matrix tanh(const Matrix& a);
+        static Matrix d_tanh(const Matrix& a);
+        static Matrix log(const Matrix& a);
+        static Matrix sum(const Matrix& a, int axis);
         static double sum(const Matrix& a);
 
     private:

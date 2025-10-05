@@ -104,6 +104,12 @@ class NeuralNetwork
             }
         }
 
+        double cost(Matrix A)
+        {
+            Matrix loss = Matrix::cross_entropy(training_set_Y, A);
+            return (-1 / (double)training_set_X.cols()) * Matrix::sum(loss);
+        }
+
         propagate_cache forward_propagation()
         {
             // We need to cache Z and A values for back propagation
@@ -127,6 +133,15 @@ class NeuralNetwork
 
         void backward_propagation(propagate_cache cache)
         {
-            // TODO
+            // Matrix dA;
+            // for (int i = num_layers - 1; i >= 0; --i)
+            // {
+            //     Matrix dZ = dA * Matrix::d_tanh(cache.Z[i]);
+
+            //     Matrix dW = dZ.dot(cache.A[i-1].transpose()) * (1 / (double)m);
+            //     Matrix db = dZ.sum();
+                
+            //     dA = W[i].transpose().dot(dZ);
+            // }
         }
 };

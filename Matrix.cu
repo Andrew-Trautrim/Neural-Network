@@ -336,6 +336,35 @@ void Matrix::zero()
 }
 
 // Static functions
+Matrix Matrix::cross_entropy(const Matrix& a, const Matrix& b)
+{
+    if (a.m != b.m || a.n != b.n)
+    {
+        std::ostringstream err;
+        err << "Invalid dimensions: cannot compute cross entropy of "
+            << a.m << "x" << a.n
+            << " matrix and "
+            << b.m << "x" << b.n
+            << " matrix.";
+        throw std::invalid_argument(err.str()); 
+    }
+
+    Matrix result(a.m, a.n);
+
+    // Set kernal parameters
+    int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+    dim3 BLOCKS(blocks_x, blocks_y);
+
+    // Execute kernal
+    MatrixKernals::cross_entropy<<<BLOCKS,THREADS>>>(a.data, b.data, result.data, a.m, a.n);
+    cudaDeviceSynchronize();
+
+    return result;
+}
+
 Matrix Matrix::sigmoid(const Matrix& a)
 {
     Matrix result(a.m, a.n);
@@ -372,6 +401,42 @@ Matrix Matrix::tanh(const Matrix& a)
     return result;
 }
 
+Matrix Matrix::d_tanh(const Matrix& a)
+{
+    Matrix result(a.m, a.n);
+
+    // Set kernal parameters
+    int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+    dim3 BLOCKS(blocks_x, blocks_y);
+
+    // Execute kernal
+    MatrixKernals::d_tanh<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
+    cudaDeviceSynchronize();
+
+    return result;
+}
+
+Matrix Matrix::log(const Matrix& a)
+{
+    Matrix result(a.m, a.n);
+
+    // Set kernal parameters
+    int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+    dim3 BLOCKS(blocks_x, blocks_y);
+
+    // Execute kernal
+    MatrixKernals::log<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
+    cudaDeviceSynchronize();
+
+    return result;
+}
+
 double Matrix::sum(const Matrix& a)
 {
     double sum = 0;
@@ -381,4 +446,44 @@ double Matrix::sum(const Matrix& a)
     }
 
     return sum;
+}
+
+Matrix Matrix::sum(const Matrix& a, int axis)
+{
+    if (axis == 0)
+    {
+        Matrix result(1, a.n);
+
+        // Set kernal parameters
+        int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x);
+
+        // Execute kernal
+        MatrixKernals::sum_vertical<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
+        cudaDeviceSynchronize();
+
+        return result;
+    }
+    else if (axis == 1)
+    {
+        Matrix result(a.m, 1);
+
+        // Set kernal parameters
+        int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_y);
+
+        // Execute kernal
+        MatrixKernals::sum_horizontal<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
+        cudaDeviceSynchronize();
+
+        return result;
+    }
+
+    std::ostringstream err;
+    err << "Unknown axis: " << axis << ".";
+    throw std::invalid_argument(err.str()); 
 }

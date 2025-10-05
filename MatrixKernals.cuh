@@ -25,6 +25,12 @@ namespace MatrixKernals
     __global__ void setup_random_states(curandState* state, unsigned long seed, int m, int n);
     __global__ void randomize(curandState* state, double* a, int m, int n, int min, int max);
 
+    __global__ void cross_entropy(double* a, double* b, double* c, int m, int n);
     __global__ void sigmoid(double* a, double* b, int m, int n);
     __global__ void tanh(double* a, double* b, int m, int n);
+    __global__ void d_tanh(double* a, double* b, int m, int n);
+    __global__ void log(double* a, double* b, int m, int n);
+    
+    __global__ void sum_vertical(double* a, double* b, int m, int n);
+    __global__ void sum_horizontal(double* a, double* b, int m, int n);
 }

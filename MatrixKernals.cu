@@ -222,6 +222,22 @@ namespace MatrixKernals
         a[i] = r;
     }
 
+    __global__ void cross_entropy(double* a, double* b, double* c, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+
+        // L(y, y_hat) = y * log(y_hat) + (1 - y) * log(1 - y_hat)
+        int i = row * n + col;
+        c[i] = a[i] * logf(b[i]) + (1 - a[i]) * logf(1 - b[i]);
+    }
+
     __global__ void sigmoid(double* a, double* b, int m, int n)
     {
         // Calculate row + col for each thread
@@ -250,5 +266,70 @@ namespace MatrixKernals
 
         int i = row * n + col;
         b[i] = tanhf(a[i]);
+    }
+
+    __global__ void d_tanh(double* a, double* b, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+
+        int i = row * n + col;
+
+        // d/dx (tan_h) = 1 - tan_h^2
+        double tanh_x = tanhf(a[i]);
+        b[i] = 1 - (tanh_x * tanh_x);
+    }
+
+    __global__ void log(double* a, double* b, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+
+        int i = row * n + col;
+        b[i] = logf(a[i]);
+    }
+
+    __global__ void sum_vertical(double* a, double* b, int m, int n)
+    {
+        // calculate col for each thread
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (col >= n)
+        {
+            return;
+        }
+
+        for (int i = 0; i < m; ++i)
+        {
+            b[col] += a[i * n + col];
+        }
+    }
+
+    __global__ void sum_horizontal(double* a, double* b, int m, int n)
+    {
+        // calculate col for each thread
+        int row = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m)
+        {
+            return;
+        }
+
+        for (int i = 0; i < n; ++i)
+        {
+            b[row] += a[row * n + i];
+        }
     }
 }
