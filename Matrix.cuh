@@ -11,6 +11,8 @@ class Matrix
         int rows() const;
         int cols() const;
 
+        Matrix& operator=(const Matrix& other);
+
         Matrix operator+(const Matrix& other) const;
         Matrix operator-(const Matrix& other) const;
         Matrix operator*(const Matrix& other) const;
@@ -22,16 +24,24 @@ class Matrix
         Matrix dot(const Matrix& other) const;
         Matrix transpose() const;
 
+        Matrix row(int i) const;
+        Matrix col(int i) const;
+
+        void print() const;
         void reshape(int m, int n);
-        void randomize();
+        void randomize(int min, int max);
         void zero();
-        void print();
 
         static Matrix cross_entropy(const Matrix& a, const Matrix& b);
+
         static Matrix sigmoid(const Matrix& a);
+        static Matrix d_sigmoid(const Matrix& a);
+
         static Matrix tanh(const Matrix& a);
         static Matrix d_tanh(const Matrix& a);
+
         static Matrix log(const Matrix& a);
+
         static Matrix sum(const Matrix& a, int axis);
         static double sum(const Matrix& a);
 

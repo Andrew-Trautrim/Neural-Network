@@ -23,7 +23,6 @@ Matrix::Matrix(int m, int n) : m(m), n(n)
     zero();
 }
 
-// TODO: make this better so we're not doing a deep copy for every = assignment
 Matrix::Matrix(const Matrix& other) : m(other.m), n(other.n)
 {
     cudaError_t err = cudaMallocManaged(&data, m * n * sizeof(double));
@@ -32,7 +31,7 @@ Matrix::Matrix(const Matrix& other) : m(other.m), n(other.n)
         throw std::runtime_error(cudaGetErrorString(err));
     }
     
-    err = cudaMemcpy(data, other.data, m * n * sizeof(double), cudaMemcpyHostToDevice);
+    err = cudaMemcpy(data, other.data, m * n * sizeof(double), cudaMemcpyDefault);
     if (err != cudaSuccess)
     {
         cudaFree(data);
@@ -53,6 +52,31 @@ int Matrix::rows() const
 int Matrix::cols() const
 {
     return n;
+}
+
+Matrix& Matrix::operator=(const Matrix& other)
+{
+    if (this != &other)
+    {
+        m = other.m;
+        n = other.n;
+        
+        cudaFree(data);
+        cudaError_t err = cudaMallocManaged(&data, m * n * sizeof(double));
+        if (err != cudaSuccess)
+        {
+            throw std::runtime_error(cudaGetErrorString(err));
+        }
+        
+        err = cudaMemcpy(data, other.data, m * n * sizeof(double), cudaMemcpyDefault);
+        if (err != cudaSuccess)
+        {
+            cudaFree(data);
+            throw std::runtime_error(cudaGetErrorString(err));
+        }
+    }
+
+    return *this;
 }
 
 Matrix Matrix::operator+(const Matrix& other) const
@@ -278,7 +302,62 @@ Matrix Matrix::transpose() const
     return result;
 }
 
-void Matrix::print()
+Matrix Matrix::row(int i) const
+{
+    if (i >= m)
+    {
+        std::ostringstream err;
+        err << "Cannot get row " 
+            << i << " of "
+            << m << "x" << n
+            << " matrix.";
+        throw std::invalid_argument(err.str()); 
+    }
+
+    Matrix result(1, n);
+
+    // Set kernal parameters
+    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+    dim3 BLOCKS(blocks_x);
+
+    // Execute kernal
+    MatrixKernals::row<<<BLOCKS,THREADS>>>(data, result.data, i, m, n);
+    cudaDeviceSynchronize();
+
+    return result;
+}
+
+Matrix Matrix::col(int i) const
+{
+    if (i >= m)
+    {
+        std::ostringstream err;
+        err << "Cannot get column " 
+            << i << " of "
+            << m << "x" << n
+            << " matrix.";
+        throw std::invalid_argument(err.str()); 
+    }
+
+    // The transpose of an MxN matrix is an NxM matrix
+    Matrix result(m, 1);
+
+    // Set kernal parameters
+    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+    dim3 BLOCKS(blocks_y);
+
+    // Execute kernal
+    MatrixKernals::col<<<BLOCKS,THREADS>>>(data, result.data, i, m, n);
+    cudaDeviceSynchronize();
+
+    return result;
+}
+
+void Matrix::print() const
 {
     std::cout << std::fixed << std::setprecision(2);
     for (int i = 0; i < m * n; ++i)
@@ -308,7 +387,7 @@ void Matrix::reshape(int m, int n)
     this->n = n;
 }
 
-void Matrix::randomize()
+void Matrix::randomize(int min, int max)
 {
     // Set kernal parameters
     int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
@@ -324,7 +403,7 @@ void Matrix::randomize()
     cudaDeviceSynchronize();
 
     // Randomize values between 0 and 10
-    MatrixKernals::randomize<<<BLOCKS,THREADS>>>(states, data, m, n, -1, 1);
+    MatrixKernals::randomize<<<BLOCKS,THREADS>>>(states, data, m, n, min, max);
     cudaDeviceSynchronize();
 
     cudaFree(states);
@@ -378,6 +457,24 @@ Matrix Matrix::sigmoid(const Matrix& a)
 
     // Execute kernal
     MatrixKernals::sigmoid<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
+    cudaDeviceSynchronize();
+
+    return result;
+}
+
+Matrix Matrix::d_sigmoid(const Matrix& a)
+{
+    Matrix result(a.m, a.n);
+
+    // Set kernal parameters
+    int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+    dim3 BLOCKS(blocks_x, blocks_y);
+
+    // Execute kernal
+    MatrixKernals::d_sigmoid<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
     cudaDeviceSynchronize();
 
     return result;

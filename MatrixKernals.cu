@@ -185,6 +185,32 @@ namespace MatrixKernals
 
         b[col * m + row] = a[row * n + col];
     }
+
+    __global__ void row(double* a, double* b, int row, int m, int n)
+    {
+        // calculate col for each thread
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (col >= n)
+        {
+            return;
+        }
+
+        b[col] = a[row * n + col];
+    }
+
+    __global__ void col(double* a, double* b, int col, int m, int n)
+    {
+        // calculate row for each thread
+        int row = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m)
+        {
+            return;
+        }
+
+        b[row] = a[row * n + col];
+    }
     
     __global__ void setup_random_states(curandState* state, unsigned long seed, int m, int n)
     {
@@ -233,9 +259,9 @@ namespace MatrixKernals
             return;
         }
 
-        // L(y, y_hat) = y * log(y_hat) + (1 - y) * log(1 - y_hat)
+        // L(y_hat, y) = y * log(y_hat) + (1 - y) * log(1 - y_hat)
         int i = row * n + col;
-        c[i] = a[i] * logf(b[i]) + (1 - a[i]) * logf(1 - b[i]);
+        c[i] = -1 * (b[i] * logf(a[i]) + (1 - b[i]) * logf(1 - a[i]));
     }
 
     __global__ void sigmoid(double* a, double* b, int m, int n)
@@ -251,6 +277,22 @@ namespace MatrixKernals
 
         int i = row * n + col;
         b[i] = 1 / (1 + exp(-1 * a[i])); 
+    }
+
+    __global__ void d_sigmoid(double* a, double* b, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+
+        int i = row * n + col;
+        double s = 1 / (1 + exp(-1 * a[i]));
+        b[i] =  s * (1 - s); // d/dx (sigmoid) = sigmoid * (1 - sigmoid) 
     }
 
     __global__ void tanh(double* a, double* b, int m, int n)
