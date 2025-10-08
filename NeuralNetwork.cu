@@ -7,12 +7,6 @@
 
 #include "Matrix.cuh"
 
-struct propagate_cache
-{
-    Matrix* Z;
-    Matrix* A;
-};
-
 class NeuralNetwork
 {
     public:
@@ -50,7 +44,7 @@ class NeuralNetwork
             std::cout << "y = " << std::endl;
             y.print();
 
-            Matrix output = predict(input);
+            Matrix output = predict(x);
             std::cout << "output = " << std::endl;
             output.print();
         }
@@ -62,17 +56,17 @@ class NeuralNetwork
                 throw std::logic_error("Neural network already completed learning."); 
             }
 
+            cudaEvent_t start, stop;
+            cudaEventCreate(&start);
+            cudaEventCreate(&stop);
+
             for (int i = 0; i < num_iterations; ++i)
             {
-                cudaEvent_t start, stop;
-                cudaEventCreate(&start);
-                cudaEventCreate(&stop);
-
                 // start recording
                 cudaEventRecord(start);
 
-                propagate_cache cache = forward_propagation();
-                backward_propagation(cache);
+                forward_propagation();
+                backward_propagation();
 
                 // stop recording
                 cudaEventRecord(stop);
@@ -82,15 +76,12 @@ class NeuralNetwork
                 {
                     float diff = 0;
                     cudaEventElapsedTime(&diff, start, stop);
-                    std::cout << i + 1 << ": C = " << cost(cache.A[num_layers - 1]) << ", t = " << diff << "ms" << std::endl;
+                    std::cout << i + 1 << ": C = " << cost(A[num_layers - 1]) << ", t = " << diff << "ms" << std::endl;
                 }
-
-                cudaEventDestroy(start);
-                cudaEventDestroy(stop);
-
-                free(cache.Z);
-                free(cache.A);
             }
+
+            cudaEventDestroy(start);
+            cudaEventDestroy(stop);
 
             complete = true;
         }
@@ -135,11 +126,18 @@ class NeuralNetwork
         // parameters
         Matrix* W;
         Matrix* b;
+        
+        // cached values
+        Matrix* Z;
+        Matrix* A;
 
         void initialize_parameters(std::vector<int> layer_sizes)
         {
             W = (Matrix*)malloc(num_layers * sizeof(Matrix));
             b = (Matrix*)malloc(num_layers * sizeof(Matrix));
+
+            Z = (Matrix*)malloc(num_layers * sizeof(Matrix));
+            A = (Matrix*)malloc(num_layers * sizeof(Matrix));
 
             int prev_layer_size = training_set_X.rows();
             for (int i = 0; i < num_layers; ++i)
@@ -160,38 +158,30 @@ class NeuralNetwork
             return (1 / (double)training_set_X.cols()) * Matrix::sum(loss);
         }
 
-        propagate_cache forward_propagation()
+        void forward_propagation()
         {
-            // We need to cache Z and A values for back propagation
-            propagate_cache cache;
-            cache.Z = (Matrix*)malloc(num_layers * sizeof(Matrix));
-            cache.A = (Matrix*)malloc(num_layers * sizeof(Matrix));
-
             Matrix prev_A = training_set_X;
             for (int i = 0; i < num_layers; ++i)
             {
-                cache.Z[i] = W[i].dot(prev_A) + b[i];
-                cache.A[i] = i == num_layers - 1
-                    ? Matrix::sigmoid(cache.Z[i])
-                    : Matrix::tanh(cache.Z[i]);
+                Z[i] = W[i].dot(prev_A) + b[i];
+                A[i] = i == num_layers - 1
+                    ? Matrix::sigmoid(Z[i])
+                    : Matrix::tanh(Z[i]);
 
-                prev_A = cache.A[i];
+                prev_A = A[i];
             }
-
-            return cache;
         }
 
-        void backward_propagation(propagate_cache cache)
+        void backward_propagation()
         {
-            Matrix A = cache.A[num_layers - 1];
-            Matrix dA = (((training_set_Y * -1) + 1) / ((A * -1) + 1)) - (training_set_Y / A);
+            Matrix dA = (((training_set_Y * -1) + 1) / ((A[num_layers - 1] * -1) + 1)) - (training_set_Y / A[num_layers - 1]);
 
             for (int i = num_layers - 1; i >= 0; --i)
             {
                 // dZ for this layer
                 Matrix dZ = dA * (i == num_layers - 1
-                    ? Matrix::d_sigmoid(cache.Z[i])
-                    : Matrix::d_tanh(cache.Z[i]));
+                    ? Matrix::d_sigmoid(Z[i])
+                    : Matrix::d_tanh(Z[i]));
 
                 // update dA for next (i - 1) layer
                 dA = W[i].transpose().dot(dZ);
@@ -199,7 +189,7 @@ class NeuralNetwork
                 // calculate gradients
                 Matrix layer_input = i == 0
                     ? training_set_X
-                    : cache.A[i-1];
+                    : A[i-1];
                 Matrix dW = dZ.dot(layer_input.transpose());
                 Matrix db = Matrix::sum(dZ, 1);
 
