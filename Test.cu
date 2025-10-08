@@ -16,13 +16,13 @@ int main()
     training_set_Y.randomize(0, 1);
 
     std::vector<int> layer_sizes = {10, output_size};
-    NeuralNetwork nn(training_set_X, training_set_Y, 0.01, 1000, layer_sizes);
+    NeuralNetwork nn(training_set_X, training_set_Y, 0.01, 10000, layer_sizes);
 
     std::cout << "before:" << std::endl;
-    nn.test(0);
+    nn.test(50);
 
     nn.model();
     
     std::cout << "after:" << std::endl;
-    nn.test(0);
+    nn.test(50);
 }

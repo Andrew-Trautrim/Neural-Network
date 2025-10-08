@@ -1,17 +1,19 @@
 #ifndef MATRIX_H
 #define MATRIX_H
 
+#include <memory>
+
 class Matrix
 {
     public:
+        Matrix();
         Matrix(int m, int n);
-        Matrix(const Matrix& other);
-        ~Matrix();
+
+        Matrix(const Matrix&) = default;
+        Matrix& operator=(const Matrix&) = default;
 
         int rows() const;
         int cols() const;
-
-        Matrix& operator=(const Matrix& other);
 
         Matrix operator+(const Matrix& other) const;
         Matrix operator-(const Matrix& other) const;
@@ -48,7 +50,8 @@ class Matrix
     private:
         int m;
         int n;
-        double* data;
+
+        std::shared_ptr<double> data;
 };
 
 #endif // MATRIX_H

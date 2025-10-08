@@ -20,17 +20,15 @@ class NeuralNetwork
               training_set_Y(training_set_Y), 
               learning_rate(learning_rate), 
               num_iterations(num_iterations),
-              num_layers(layer_sizes.size())
+              num_layers(layer_sizes.size()),
+              W(num_layers),
+              b(num_layers),
+              Z(num_layers),
+              A(num_layers)
         {
             complete = false;
 
             initialize_parameters(layer_sizes);
-        }
-
-        ~NeuralNetwork()
-        {
-            free(W);
-            free(b);
         }
 
         void test(int i)
@@ -72,7 +70,7 @@ class NeuralNetwork
                 cudaEventRecord(stop);
                 cudaEventSynchronize(stop);
 
-                if ((i + 1) % 10 == 0)
+                if ((i + 1) % 100 == 0)
                 {
                     float diff = 0;
                     cudaEventElapsedTime(&diff, start, stop);
@@ -124,21 +122,15 @@ class NeuralNetwork
         int num_layers;
 
         // parameters
-        Matrix* W;
-        Matrix* b;
+        std::vector<Matrix> W;
+        std::vector<Matrix> b;
         
         // cached values
-        Matrix* Z;
-        Matrix* A;
+        std::vector<Matrix> Z;
+        std::vector<Matrix> A;
 
         void initialize_parameters(std::vector<int> layer_sizes)
         {
-            W = (Matrix*)malloc(num_layers * sizeof(Matrix));
-            b = (Matrix*)malloc(num_layers * sizeof(Matrix));
-
-            Z = (Matrix*)malloc(num_layers * sizeof(Matrix));
-            A = (Matrix*)malloc(num_layers * sizeof(Matrix));
-
             int prev_layer_size = training_set_X.rows();
             for (int i = 0; i < num_layers; ++i)
             {

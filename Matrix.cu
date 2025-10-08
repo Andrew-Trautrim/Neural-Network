@@ -14,34 +14,25 @@ int seed = 0;
 
 Matrix::Matrix(int m, int n) : m(m), n(n)
 {
-    cudaError_t err = cudaMallocManaged(&data, m * n * sizeof(double));
+    double* raw_ptr;
+    cudaError_t err = cudaMallocManaged(&raw_ptr, m * n * sizeof(double));
     if (err != cudaSuccess)
     {
         throw std::runtime_error(cudaGetErrorString(err));
     }
+
+    auto cuda_deleter = [](double* p)
+    {
+        cudaFree(p);
+    };
+
+    data = std::shared_ptr<double>(raw_ptr, cuda_deleter);
 
     zero();
 }
 
-Matrix::Matrix(const Matrix& other) : m(other.m), n(other.n)
+Matrix::Matrix() : m(0), n(0), data(nullptr)
 {
-    cudaError_t err = cudaMallocManaged(&data, m * n * sizeof(double));
-    if (err != cudaSuccess)
-    {
-        throw std::runtime_error(cudaGetErrorString(err));
-    }
-    
-    err = cudaMemcpy(data, other.data, m * n * sizeof(double), cudaMemcpyDefault);
-    if (err != cudaSuccess)
-    {
-        cudaFree(data);
-        throw std::runtime_error(cudaGetErrorString(err));
-    }
-}
-
-Matrix::~Matrix()
-{
-    cudaFree(data);
 }
 
 int Matrix::rows() const
@@ -52,31 +43,6 @@ int Matrix::rows() const
 int Matrix::cols() const
 {
     return n;
-}
-
-Matrix& Matrix::operator=(const Matrix& other)
-{
-    if (this != &other)
-    {
-        m = other.m;
-        n = other.n;
-        
-        cudaFree(data);
-        cudaError_t err = cudaMallocManaged(&data, m * n * sizeof(double));
-        if (err != cudaSuccess)
-        {
-            throw std::runtime_error(cudaGetErrorString(err));
-        }
-        
-        err = cudaMemcpy(data, other.data, m * n * sizeof(double), cudaMemcpyDefault);
-        if (err != cudaSuccess)
-        {
-            cudaFree(data);
-            throw std::runtime_error(cudaGetErrorString(err));
-        }
-    }
-
-    return *this;
 }
 
 Matrix Matrix::operator+(const Matrix& other) const
@@ -92,17 +58,17 @@ Matrix Matrix::operator+(const Matrix& other) const
 
     if (m == other.m && n == other.n)
     {
-        MatrixKernals::add<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
+        MatrixKernals::add<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
         cudaDeviceSynchronize();
     }
     else if (m == other.m && other.n == 1)
     {
-        MatrixKernals::add_broadcast_horizontal<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
+        MatrixKernals::add_broadcast_horizontal<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
         cudaDeviceSynchronize();
     }
     else if (n == other.n && other.m == 1)
     {
-        MatrixKernals::add_broadcast_vertical<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
+        MatrixKernals::add_broadcast_vertical<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
         cudaDeviceSynchronize();
     }
     else 
@@ -132,17 +98,17 @@ Matrix Matrix::operator-(const Matrix& other) const
 
     if (m == other.m && n == other.n)
     {
-        MatrixKernals::subtract<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
+        MatrixKernals::subtract<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
         cudaDeviceSynchronize();
     }
     else if (m == other.m && other.n == 1)
     {
-        MatrixKernals::subtract_broadcast_horizontal<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
+        MatrixKernals::subtract_broadcast_horizontal<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
         cudaDeviceSynchronize();
     }
     else if (n == other.n && other.m == 1)
     {
-        MatrixKernals::subtract_broadcast_vertical<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
+        MatrixKernals::subtract_broadcast_vertical<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
         cudaDeviceSynchronize();
     }
     else 
@@ -182,7 +148,7 @@ Matrix Matrix::operator*(const Matrix& other) const
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::multiply<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
+    MatrixKernals::multiply<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
     cudaDeviceSynchronize();
 
     return result;
@@ -211,7 +177,7 @@ Matrix Matrix::operator/(const Matrix& other) const
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::divide<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n);
+    MatrixKernals::divide<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
     cudaDeviceSynchronize();
 
     return result;
@@ -229,7 +195,7 @@ Matrix Matrix::operator+(double num) const
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::add<<<BLOCKS,THREADS>>>(data, num, result.data, m, n);
+    MatrixKernals::add<<<BLOCKS,THREADS>>>(data.get(), num, result.data.get(), m, n);
     cudaDeviceSynchronize();
 
     return result;
@@ -247,7 +213,7 @@ Matrix Matrix::operator*(double num) const
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::multiply<<<BLOCKS,THREADS>>>(data, num, result.data, m, n);
+    MatrixKernals::multiply<<<BLOCKS,THREADS>>>(data.get(), num, result.data.get(), m, n);
     cudaDeviceSynchronize();
 
     return result;
@@ -277,7 +243,7 @@ Matrix Matrix::dot(const Matrix& other) const
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::dot<<<BLOCKS,THREADS>>>(data, other.data, result.data, m, n, other.m, other.n);
+    MatrixKernals::dot<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n, other.m, other.n);
     cudaDeviceSynchronize();
 
     return result;
@@ -296,7 +262,7 @@ Matrix Matrix::transpose() const
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::transpose<<<BLOCKS,THREADS>>>(data, result.data, m, n);
+    MatrixKernals::transpose<<<BLOCKS,THREADS>>>(data.get(), result.data.get(), m, n);
     cudaDeviceSynchronize();
 
     return result;
@@ -323,7 +289,7 @@ Matrix Matrix::row(int i) const
     dim3 BLOCKS(blocks_x);
 
     // Execute kernal
-    MatrixKernals::row<<<BLOCKS,THREADS>>>(data, result.data, i, m, n);
+    MatrixKernals::row<<<BLOCKS,THREADS>>>(data.get(), result.data.get(), i, m, n);
     cudaDeviceSynchronize();
 
     return result;
@@ -331,7 +297,7 @@ Matrix Matrix::row(int i) const
 
 Matrix Matrix::col(int i) const
 {
-    if (i >= m)
+    if (i >= n)
     {
         std::ostringstream err;
         err << "Cannot get column " 
@@ -351,7 +317,7 @@ Matrix Matrix::col(int i) const
     dim3 BLOCKS(blocks_y);
 
     // Execute kernal
-    MatrixKernals::col<<<BLOCKS,THREADS>>>(data, result.data, i, m, n);
+    MatrixKernals::col<<<BLOCKS,THREADS>>>(data.get(), result.data.get(), i, m, n);
     cudaDeviceSynchronize();
 
     return result;
@@ -362,7 +328,7 @@ void Matrix::print() const
     std::cout << std::fixed << std::setprecision(2);
     for (int i = 0; i < m * n; ++i)
     {
-        std::cout << std::setw(5) << data[i] << "  ";
+        std::cout << std::setw(5) << data.get()[i] << "  ";
         if ((i+1) % n == 0)
         {
             std::cout << std::endl;
@@ -403,7 +369,7 @@ void Matrix::randomize(int min, int max)
     cudaDeviceSynchronize();
 
     // Randomize values between 0 and 10
-    MatrixKernals::randomize<<<BLOCKS,THREADS>>>(states, data, m, n, min, max);
+    MatrixKernals::randomize<<<BLOCKS,THREADS>>>(states, data.get(), m, n, min, max);
     cudaDeviceSynchronize();
 
     cudaFree(states);
@@ -411,7 +377,7 @@ void Matrix::randomize(int min, int max)
 
 void Matrix::zero()
 {
-    cudaMemset(data, 0, m * n * sizeof(double));
+    cudaMemset(data.get(), 0, m * n * sizeof(double));
 }
 
 // Static functions
@@ -438,7 +404,7 @@ Matrix Matrix::cross_entropy(const Matrix& a, const Matrix& b)
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::cross_entropy<<<BLOCKS,THREADS>>>(a.data, b.data, result.data, a.m, a.n);
+    MatrixKernals::cross_entropy<<<BLOCKS,THREADS>>>(a.data.get(), b.data.get(), result.data.get(), a.m, a.n);
     cudaDeviceSynchronize();
 
     return result;
@@ -456,7 +422,7 @@ Matrix Matrix::sigmoid(const Matrix& a)
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::sigmoid<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
+    MatrixKernals::sigmoid<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
     cudaDeviceSynchronize();
 
     return result;
@@ -474,7 +440,7 @@ Matrix Matrix::d_sigmoid(const Matrix& a)
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::d_sigmoid<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
+    MatrixKernals::d_sigmoid<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
     cudaDeviceSynchronize();
 
     return result;
@@ -492,7 +458,7 @@ Matrix Matrix::tanh(const Matrix& a)
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::tanh<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
+    MatrixKernals::tanh<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
     cudaDeviceSynchronize();
 
     return result;
@@ -510,7 +476,7 @@ Matrix Matrix::d_tanh(const Matrix& a)
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::d_tanh<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
+    MatrixKernals::d_tanh<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
     cudaDeviceSynchronize();
 
     return result;
@@ -528,7 +494,7 @@ Matrix Matrix::log(const Matrix& a)
     dim3 BLOCKS(blocks_x, blocks_y);
 
     // Execute kernal
-    MatrixKernals::log<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
+    MatrixKernals::log<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
     cudaDeviceSynchronize();
 
     return result;
@@ -539,7 +505,7 @@ double Matrix::sum(const Matrix& a)
     double sum = 0;
     for (int i = 0, n = a.m * a.n; i < n; ++i)
     {
-        sum += a.data[i];
+        sum += a.data.get()[i];
     }
 
     return sum;
@@ -558,7 +524,7 @@ Matrix Matrix::sum(const Matrix& a, int axis)
         dim3 BLOCKS(blocks_x);
 
         // Execute kernal
-        MatrixKernals::sum_vertical<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
+        MatrixKernals::sum_vertical<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
         cudaDeviceSynchronize();
 
         return result;
@@ -574,7 +540,7 @@ Matrix Matrix::sum(const Matrix& a, int axis)
         dim3 BLOCKS(blocks_y);
 
         // Execute kernal
-        MatrixKernals::sum_horizontal<<<BLOCKS,THREADS>>>(a.data, result.data, a.m, a.n);
+        MatrixKernals::sum_horizontal<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
         cudaDeviceSynchronize();
 
         return result;
