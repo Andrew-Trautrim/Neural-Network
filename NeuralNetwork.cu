@@ -74,7 +74,8 @@ class NeuralNetwork
                 {
                     float diff = 0;
                     cudaEventElapsedTime(&diff, start, stop);
-                    std::cout << i + 1 << ": C = " << cost(A[num_layers - 1]) << ", t = " << diff << "ms" << std::endl;
+                    double c = cost(A[num_layers - 1]);
+                    std::cout << i + 1 << ": C = " << c << ", t = " << diff << "ms" << std::endl;
                 }
             }
 

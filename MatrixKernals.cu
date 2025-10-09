@@ -261,7 +261,8 @@ namespace MatrixKernals
 
         // L(y_hat, y) = y * log(y_hat) + (1 - y) * log(1 - y_hat)
         int i = row * n + col;
-        c[i] = -1 * (b[i] * logf(a[i]) + (1 - b[i]) * logf(1 - a[i]));
+        double a_capped = fmaxf(fminf(a[i], 1.0f - 1e-7f), 1e-7f); // make sure a[i] can't be too close to 0 or 1
+        c[i] = -1 * (b[i] * logf(a_capped) + (1 - b[i]) * logf(1 - a_capped));
     }
 
     __global__ void sigmoid(double* a, double* b, int m, int n)
