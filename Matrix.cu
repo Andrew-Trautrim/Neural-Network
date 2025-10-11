@@ -5,12 +5,17 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "MatrixKernals.cuh"
 #include "Matrix.cuh"
+#include "MatrixKernals.cuh"
 
 const int THREADS_PER_DIM = 16;
 
 int seed = 0;
+
+void add(double* a, double* b, double* c)
+{
+    
+}
 
 Matrix::Matrix(int m, int n) : m(m), n(n)
 {
@@ -44,179 +49,387 @@ int Matrix::cols() const
 {
     return n;
 }
-
-Matrix Matrix::operator+(const Matrix& other) const
+        
+Matrix::Matrix(const MatrixExpr& expr)
 {
-    // Set kernal parameters
-    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+    m = expr.m;
+    n = expr.n;
 
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
-    
-    Matrix result(m, n);
-
-    if (m == other.m && n == other.n)
+    double* raw_ptr;
+    cudaError_t err = cudaMallocManaged(&raw_ptr, m * n * sizeof(double));
+    if (err != cudaSuccess)
     {
-        MatrixKernals::add<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
-        cudaDeviceSynchronize();
-    }
-    else if (m == other.m && other.n == 1)
-    {
-        MatrixKernals::add_broadcast_horizontal<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
-        cudaDeviceSynchronize();
-    }
-    else if (n == other.n && other.m == 1)
-    {
-        MatrixKernals::add_broadcast_vertical<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
-        cudaDeviceSynchronize();
-    }
-    else 
-    {
-        std::ostringstream err;
-        err << "Invalid dimensions: cannot add "
-            << m << "x" << n
-            << " matrix to "
-            << other.m << "x" << other.n
-            << " matrix.";
-        throw std::invalid_argument(err.str()); 
+        throw std::runtime_error(cudaGetErrorString(err));
     }
 
-    return result;
+    auto cuda_deleter = [](double* p)
+    {
+        cudaFree(p);
+    };
+
+    data = std::shared_ptr<double>(raw_ptr, cuda_deleter);
+    zero();
+
+    expr.eval(data.get());
 }
 
-Matrix Matrix::operator-(const Matrix& other) const
+Matrix& Matrix::operator=(const MatrixExpr& expr)
 {
-    // Set kernal parameters
-    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
-    
-    Matrix result(m, n);
-
-    if (m == other.m && n == other.n)
+    if (m * n != expr.m * expr.n)
     {
-        MatrixKernals::subtract<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
+        double* raw_ptr;
+        cudaError_t err = cudaMallocManaged(&raw_ptr, expr.m * expr.n * sizeof(double));
+        if (err != cudaSuccess)
+        {
+            throw std::runtime_error(cudaGetErrorString(err));
+        }
+
+        auto cuda_deleter = [](double* p)
+        {
+            cudaFree(p);
+        };
+
+        data = std::shared_ptr<double>(raw_ptr, cuda_deleter);
+    }
+
+    m = expr.m;
+    n = expr.n;
+
+    zero();
+
+    expr.eval(data.get());
+
+    return *this;
+}
+
+MatrixExpr Matrix::operator+(const Matrix& other) const
+{
+    std::function<void (double*)> expr = [this, other](double* accumulator)
+    {
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        if (m == other.m && n == other.n)
+        {
+            MatrixKernals::add<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else if (m == other.m && other.n == 1)
+        {
+            MatrixKernals::add_broadcast_horizontal<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else if (n == other.n && other.m == 1)
+        {
+            MatrixKernals::add_broadcast_vertical<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else 
+        {
+            std::ostringstream err;
+            err << "Invalid dimensions: cannot add "
+                << m << "x" << n
+                << " matrix to "
+                << other.m << "x" << other.n
+                << " matrix.";
+            throw std::invalid_argument(err.str()); 
+        }
+    };
+
+    return MatrixExpr(m, n, expr);
+}
+
+MatrixExpr Matrix::operator+(const MatrixExpr& other) const
+{
+    std::function<void (double*)> expr = [this, other](double* accumulator)
+    {
+        other.eval(accumulator);
+
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        if (m == other.m && n == other.n)
+        {
+            MatrixKernals::add<<<BLOCKS,THREADS>>>(data.get(), accumulator, accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else if (m == other.m && other.n == 1)
+        {
+            MatrixKernals::add_broadcast_horizontal<<<BLOCKS,THREADS>>>(data.get(), accumulator, accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else if (n == other.n && other.m == 1)
+        {
+            MatrixKernals::add_broadcast_vertical<<<BLOCKS,THREADS>>>(data.get(), accumulator, accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else 
+        {
+            std::ostringstream err;
+            err << "Invalid dimensions: cannot add "
+                << m << "x" << n
+                << " matrix to "
+                << other.m << "x" << other.n
+                << " matrix.";
+            throw std::invalid_argument(err.str()); 
+        }
+    };
+
+    return MatrixExpr(m, n, expr);
+}
+
+MatrixExpr Matrix::operator-(const Matrix& other) const
+{
+    std::function<void (double*)> expr = [this, other](double* accumulator)
+    {
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        if (m == other.m && n == other.n)
+        {
+            MatrixKernals::subtract<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else if (m == other.m && other.n == 1)
+        {
+            MatrixKernals::subtract_broadcast_horizontal<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else if (n == other.n && other.m == 1)
+        {
+            MatrixKernals::subtract_broadcast_vertical<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else 
+        {
+            std::ostringstream err;
+            err << "Invalid dimensions: cannot subtract "
+                << other.m << "x" << other.n
+                << " matrix from "
+                << m << "x" << n
+                << " matrix.";
+            throw std::invalid_argument(err.str()); 
+        }
+    };
+
+    return MatrixExpr(m, n, expr);
+}
+
+MatrixExpr Matrix::operator-(const MatrixExpr& other) const
+{
+    std::function<void (double*)> expr = [this, other](double* accumulator)
+    {
+        other.eval(accumulator);
+
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        if (m == other.m && n == other.n)
+        {
+            MatrixKernals::subtract<<<BLOCKS,THREADS>>>(data.get(), accumulator, accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else if (m == other.m && other.n == 1)
+        {
+            MatrixKernals::subtract_broadcast_horizontal<<<BLOCKS,THREADS>>>(data.get(), accumulator, accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else if (n == other.n && other.m == 1)
+        {
+            MatrixKernals::subtract_broadcast_vertical<<<BLOCKS,THREADS>>>(data.get(), accumulator, accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else 
+        {
+            std::ostringstream err;
+            err << "Invalid dimensions: cannot subtract "
+                << other.m << "x" << other.n
+                << " matrix from "
+                << m << "x" << n
+                << " matrix.";
+            throw std::invalid_argument(err.str()); 
+        }
+    };
+
+    return MatrixExpr(m, n, expr);
+}
+
+MatrixExpr Matrix::operator*(const Matrix& other) const
+{
+    std::function<void (double*)> expr = [this, other](double* accumulator)
+    {
+        if (m != other.m || n != other.n)
+        {
+            std::ostringstream err;
+            err << "Invalid dimensions: cannot multiply "
+                << m << "x" << n
+                << " matrix with "
+                << other.m << "x" << other.n
+                << " matrix.";
+            throw std::invalid_argument(err.str()); 
+        }
+
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        // Execute kernal
+        MatrixKernals::multiply<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), accumulator, m, n);
         cudaDeviceSynchronize();
-    }
-    else if (m == other.m && other.n == 1)
+    };
+
+    return MatrixExpr(m, n, expr);
+}
+
+MatrixExpr Matrix::operator*(const MatrixExpr& other) const
+{
+    std::function<void (double*)> expr = [this, other](double* accumulator)
     {
-        MatrixKernals::subtract_broadcast_horizontal<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
+        other.eval(accumulator);
+
+        if (m != other.m || n != other.n)
+        {
+            std::ostringstream err;
+            err << "Invalid dimensions: cannot multiply "
+                << m << "x" << n
+                << " matrix with "
+                << other.m << "x" << other.n
+                << " matrix.";
+            throw std::invalid_argument(err.str()); 
+        }
+
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        // Execute kernal
+        MatrixKernals::multiply<<<BLOCKS,THREADS>>>(data.get(), accumulator, accumulator, m, n);
         cudaDeviceSynchronize();
-    }
-    else if (n == other.n && other.m == 1)
+    };
+
+    return MatrixExpr(m, n, expr);
+}
+
+MatrixExpr Matrix::operator/(const Matrix& other) const
+{
+    std::function<void (double*)> expr = [this, other](double* accumulator)
     {
-        MatrixKernals::subtract_broadcast_vertical<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
+        if (m != other.m || n != other.n)
+        {
+            std::ostringstream err;
+            err << "Invalid dimensions: cannot multiply "
+                << m << "x" << n
+                << " matrix with "
+                << other.m << "x" << other.n
+                << " matrix.";
+            throw std::invalid_argument(err.str()); 
+        }
+
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        // Execute kernal
+        MatrixKernals::divide<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), accumulator, m, n);
         cudaDeviceSynchronize();
-    }
-    else 
+    };
+
+    return MatrixExpr(m, n, expr);
+}
+
+MatrixExpr Matrix::operator/(const MatrixExpr& other) const
+{
+    std::function<void (double*)> expr = [this, other](double* accumulator)
     {
-        std::ostringstream err;
-        err << "Invalid dimensions: cannot subtract "
-            << other.m << "x" << other.n
-            << " matrix from "
-            << m << "x" << n
-            << " matrix.";
-        throw std::invalid_argument(err.str()); 
-    }
+        other.eval(accumulator);
 
-    return result;
+        if (m != other.m || n != other.n)
+        {
+            std::ostringstream err;
+            err << "Invalid dimensions: cannot multiply "
+                << m << "x" << n
+                << " matrix with "
+                << other.m << "x" << other.n
+                << " matrix.";
+            throw std::invalid_argument(err.str()); 
+        }
+
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        // Execute kernal
+        MatrixKernals::divide<<<BLOCKS,THREADS>>>(data.get(), accumulator, accumulator, m, n);
+        cudaDeviceSynchronize();
+    };
+
+    return MatrixExpr(m, n, expr);
 }
 
-Matrix Matrix::operator*(const Matrix& other) const
+MatrixExpr Matrix::operator+(double num) const
 {
-    if (m != other.m || n != other.n)
+    std::function<void (double*)> expr = [this, num](double* accumulator)
     {
-        std::ostringstream err;
-        err << "Invalid dimensions: cannot multiply "
-            << m << "x" << n
-            << " matrix with "
-            << other.m << "x" << other.n
-            << " matrix.";
-        throw std::invalid_argument(err.str()); 
-    }
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
-    Matrix result(m, n);
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
 
-    // Set kernal parameters
-    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        // Execute kernal
+        MatrixKernals::add<<<BLOCKS,THREADS>>>(data.get(), num, accumulator, m, n);
+        cudaDeviceSynchronize();
+    };
 
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
-
-    // Execute kernal
-    MatrixKernals::multiply<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
-    cudaDeviceSynchronize();
-
-    return result;
+    return MatrixExpr(m, n, expr);
 }
 
-Matrix Matrix::operator/(const Matrix& other) const
+MatrixExpr Matrix::operator*(double num) const
 {
-    if (m != other.m || n != other.n)
+    std::function<void (double*)> expr = [this, num](double* accumulator)
     {
-        std::ostringstream err;
-        err << "Invalid dimensions: cannot divide "
-            << m << "x" << n
-            << " matrix with "
-            << other.m << "x" << other.n
-            << " matrix.";
-        throw std::invalid_argument(err.str()); 
-    }
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
-    Matrix result(m, n);
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
 
-    // Set kernal parameters
-    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        // Execute kernal
+        MatrixKernals::multiply<<<BLOCKS,THREADS>>>(data.get(), num, accumulator, m, n);
+        cudaDeviceSynchronize();
+    };
 
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
-
-    // Execute kernal
-    MatrixKernals::divide<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n);
-    cudaDeviceSynchronize();
-
-    return result;
-}
-
-Matrix Matrix::operator+(double num) const
-{
-    Matrix result(m, n);
-
-    // Set kernal parameters
-    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
-
-    // Execute kernal
-    MatrixKernals::add<<<BLOCKS,THREADS>>>(data.get(), num, result.data.get(), m, n);
-    cudaDeviceSynchronize();
-
-    return result;
-}
-
-Matrix Matrix::operator*(double num) const
-{
-    Matrix result(m, n);
-
-    // Set kernal parameters
-    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
-
-    // Execute kernal
-    MatrixKernals::multiply<<<BLOCKS,THREADS>>>(data.get(), num, result.data.get(), m, n);
-    cudaDeviceSynchronize();
-
-    return result;
+    return MatrixExpr(m, n, expr);
 }
 
 Matrix Matrix::dot(const Matrix& other) const
@@ -549,4 +762,166 @@ Matrix Matrix::sum(const Matrix& a, int axis)
     std::ostringstream err;
     err << "Unknown axis: " << axis << ".";
     throw std::invalid_argument(err.str()); 
+}
+
+MatrixExpr::MatrixExpr(int m, int n, std::function<void (double*)> eval) : m(m), n(n), eval(eval)
+{
+}
+
+MatrixExpr MatrixExpr::operator+(const Matrix& other) const
+{
+    std::function<void (double*)> expr = [this, other](double* accumulator)
+    {
+        eval(accumulator);
+
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        if (m == other.m && n == other.n)
+        {
+            MatrixKernals::add<<<BLOCKS,THREADS>>>(accumulator, other.data.get(), accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else if (m == other.m && other.n == 1)
+        {
+            MatrixKernals::add_broadcast_horizontal<<<BLOCKS,THREADS>>>(accumulator, other.data.get(), accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else if (n == other.n && other.m == 1)
+        {
+            MatrixKernals::add_broadcast_vertical<<<BLOCKS,THREADS>>>(accumulator, other.data.get(), accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else 
+        {
+            std::ostringstream err;
+            err << "Invalid dimensions: cannot add "
+                << m << "x" << n
+                << " matrix to "
+                << other.m << "x" << other.n
+                << " matrix.";
+            throw std::invalid_argument(err.str()); 
+        }
+    };
+
+    return MatrixExpr(m, n, expr);
+}
+
+MatrixExpr MatrixExpr::operator-(const Matrix& other) const
+{
+    std::function<void (double*)> expr = [this, other](double* accumulator)
+    {
+        eval(accumulator);
+
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        if (m == other.m && n == other.n)
+        {
+            MatrixKernals::subtract<<<BLOCKS,THREADS>>>(accumulator, other.data.get(), accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else if (m == other.m && other.n == 1)
+        {
+            MatrixKernals::subtract_broadcast_horizontal<<<BLOCKS,THREADS>>>(accumulator, other.data.get(), accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else if (n == other.n && other.m == 1)
+        {
+            MatrixKernals::subtract_broadcast_vertical<<<BLOCKS,THREADS>>>(accumulator, other.data.get(), accumulator, m, n);
+            cudaDeviceSynchronize();
+        }
+        else 
+        {
+            std::ostringstream err;
+            err << "Invalid dimensions: cannot subtract "
+                << other.m << "x" << other.n
+                << " matrix from "
+                << m << "x" << n
+                << " matrix.";
+            throw std::invalid_argument(err.str()); 
+        }
+    };
+
+    return MatrixExpr(m, n, expr);
+}
+
+MatrixExpr MatrixExpr::operator*(const Matrix& other) const
+{
+    std::function<void (double*)> expr = [this, other](double* accumulator)
+    {
+        eval(accumulator);
+
+        if (m != other.m || n != other.n)
+        {
+            std::ostringstream err;
+            err << "Invalid dimensions: cannot multiply "
+                << m << "x" << n
+                << " matrix with "
+                << other.m << "x" << other.n
+                << " matrix.";
+            throw std::invalid_argument(err.str()); 
+        }
+
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        // Execute kernal
+        MatrixKernals::multiply<<<BLOCKS,THREADS>>>(accumulator, other.data.get(), accumulator, m, n);
+        cudaDeviceSynchronize();
+    };
+
+    return MatrixExpr(m, n, expr);
+}
+
+MatrixExpr MatrixExpr::operator/(const Matrix& other) const
+{
+    std::function<void (double*)> expr = [this, other](double* accumulator)
+    {
+        eval(accumulator);
+
+        if (m != other.m || n != other.n)
+        {
+            std::ostringstream err;
+            err << "Invalid dimensions: cannot multiply "
+                << m << "x" << n
+                << " matrix with "
+                << other.m << "x" << other.n
+                << " matrix.";
+            throw std::invalid_argument(err.str()); 
+        }
+
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        // Execute kernal
+        MatrixKernals::divide<<<BLOCKS,THREADS>>>(accumulator, other.data.get(), accumulator, m, n);
+        cudaDeviceSynchronize();
+    };
+
+    return MatrixExpr(m, n, expr);
+}
+
+Matrix MatrixExpr::evaluate(const MatrixExpr& expr)
+{
+    Matrix result(expr.m, expr.n);
+    expr.eval(result.data.get());
+
+    return result;
 }

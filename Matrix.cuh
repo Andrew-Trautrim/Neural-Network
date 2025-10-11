@@ -1,27 +1,43 @@
 #ifndef MATRIX_H
 #define MATRIX_H
 
+#include <cuda_runtime.h>
+#include <functional>
 #include <memory>
+
+class MatrixExpr;
 
 class Matrix
 {
+    friend class MatrixExpr;
+
     public:
         Matrix();
         Matrix(int m, int n);
 
         Matrix(const Matrix&) = default;
+        Matrix(const MatrixExpr&);
+
         Matrix& operator=(const Matrix&) = default;
+        Matrix& operator=(const MatrixExpr&);
 
         int rows() const;
         int cols() const;
 
-        Matrix operator+(const Matrix& other) const;
-        Matrix operator-(const Matrix& other) const;
-        Matrix operator*(const Matrix& other) const;
-        Matrix operator/(const Matrix& other) const;
+        MatrixExpr operator+(const Matrix& other) const;
+        MatrixExpr operator+(const MatrixExpr& other) const;
 
-        Matrix operator+(double num) const;
-        Matrix operator*(double num) const;
+        MatrixExpr operator-(const Matrix& other) const;
+        MatrixExpr operator-(const MatrixExpr& other) const;
+
+        MatrixExpr operator*(const Matrix& other) const;
+        MatrixExpr operator*(const MatrixExpr& other) const;
+
+        MatrixExpr operator/(const Matrix& other) const;
+        MatrixExpr operator/(const MatrixExpr& other) const;
+
+        MatrixExpr operator+(double num) const;
+        MatrixExpr operator*(double num) const;
 
         Matrix dot(const Matrix& other) const;
         Matrix transpose() const;
@@ -52,6 +68,27 @@ class Matrix
         int n;
 
         std::shared_ptr<double> data;
+};
+
+class MatrixExpr
+{
+    friend class Matrix;
+
+    public:
+        __host__ MatrixExpr(int m, int n, std::function<void (double*)> eval);
+
+        __host__ MatrixExpr operator+(const Matrix& other) const;
+        __host__ MatrixExpr operator-(const Matrix& other) const;
+        __host__ MatrixExpr operator*(const Matrix& other) const;
+        __host__ MatrixExpr operator/(const Matrix& other) const;
+
+        __host__ static Matrix evaluate(const MatrixExpr& expr);
+
+    private:
+        int m;
+        int n;
+
+        std::function<void (double*)> eval;
 };
 
 #endif // MATRIX_H
