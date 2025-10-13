@@ -272,19 +272,19 @@ MatrixExpr Matrix::operator-(const MatrixExpr& other) const
 
 MatrixExpr Matrix::operator*(const Matrix& other) const
 {
+    if (m != other.m || n != other.n)
+    {
+        std::ostringstream err;
+        err << "Invalid dimensions: cannot multiply "
+            << m << "x" << n
+            << " matrix with "
+            << other.m << "x" << other.n
+            << " matrix.";
+        throw std::invalid_argument(err.str()); 
+    }
+
     std::function<void (double*)> expr = [this, other](double* accumulator)
     {
-        if (m != other.m || n != other.n)
-        {
-            std::ostringstream err;
-            err << "Invalid dimensions: cannot multiply "
-                << m << "x" << n
-                << " matrix with "
-                << other.m << "x" << other.n
-                << " matrix.";
-            throw std::invalid_argument(err.str()); 
-        }
-
         // Set kernal parameters
         int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
         int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
@@ -302,20 +302,20 @@ MatrixExpr Matrix::operator*(const Matrix& other) const
 
 MatrixExpr Matrix::operator*(const MatrixExpr& other) const
 {
+    if (m != other.m || n != other.n)
+    {
+        std::ostringstream err;
+        err << "Invalid dimensions: cannot multiply "
+            << m << "x" << n
+            << " matrix with "
+            << other.m << "x" << other.n
+            << " matrix.";
+        throw std::invalid_argument(err.str()); 
+    }
+    
     std::function<void (double*)> expr = [this, other](double* accumulator)
     {
         other.eval(accumulator);
-
-        if (m != other.m || n != other.n)
-        {
-            std::ostringstream err;
-            err << "Invalid dimensions: cannot multiply "
-                << m << "x" << n
-                << " matrix with "
-                << other.m << "x" << other.n
-                << " matrix.";
-            throw std::invalid_argument(err.str()); 
-        }
 
         // Set kernal parameters
         int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
@@ -334,19 +334,19 @@ MatrixExpr Matrix::operator*(const MatrixExpr& other) const
 
 MatrixExpr Matrix::operator/(const Matrix& other) const
 {
+    if (m != other.m || n != other.n)
+    {
+        std::ostringstream err;
+        err << "Invalid dimensions: cannot multiply "
+            << m << "x" << n
+            << " matrix with "
+            << other.m << "x" << other.n
+            << " matrix.";
+        throw std::invalid_argument(err.str()); 
+    }
+
     std::function<void (double*)> expr = [this, other](double* accumulator)
     {
-        if (m != other.m || n != other.n)
-        {
-            std::ostringstream err;
-            err << "Invalid dimensions: cannot multiply "
-                << m << "x" << n
-                << " matrix with "
-                << other.m << "x" << other.n
-                << " matrix.";
-            throw std::invalid_argument(err.str()); 
-        }
-
         // Set kernal parameters
         int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
         int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
@@ -364,20 +364,20 @@ MatrixExpr Matrix::operator/(const Matrix& other) const
 
 MatrixExpr Matrix::operator/(const MatrixExpr& other) const
 {
+    if (m != other.m || n != other.n)
+    {
+        std::ostringstream err;
+        err << "Invalid dimensions: cannot multiply "
+            << m << "x" << n
+            << " matrix with "
+            << other.m << "x" << other.n
+            << " matrix.";
+        throw std::invalid_argument(err.str()); 
+    }
+
     std::function<void (double*)> expr = [this, other](double* accumulator)
     {
         other.eval(accumulator);
-
-        if (m != other.m || n != other.n)
-        {
-            std::ostringstream err;
-            err << "Invalid dimensions: cannot multiply "
-                << m << "x" << n
-                << " matrix with "
-                << other.m << "x" << other.n
-                << " matrix.";
-            throw std::invalid_argument(err.str()); 
-        }
 
         // Set kernal parameters
         int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
@@ -432,7 +432,9 @@ MatrixExpr Matrix::operator*(double num) const
     return MatrixExpr(m, n, expr);
 }
 
-Matrix Matrix::dot(const Matrix& other) const
+// Cannot do SomeMatrix = OtherMatrix.dot(SomeMatrix);
+// TODO: fix that
+MatrixExpr Matrix::dot(const Matrix& other) const
 {
     if (n != other.m)
     {
@@ -445,43 +447,45 @@ Matrix Matrix::dot(const Matrix& other) const
         throw std::invalid_argument(err.str()); 
     }
 
+    std::function<void (double*)> expr = [this, other](double* accumulator)
+    {
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (other.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        // Execute kernal
+        MatrixKernals::dot<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), accumulator, m, n, other.m, other.n);
+        cudaDeviceSynchronize();
+    };
+
     // Multpliplying an a_m x a_n matrix with an b_m x b_n matrix results in an a_m x b_n matrix.
-    Matrix result(m, other.n);
-
-    // Set kernal parameters
-    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (other.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
-
-    // Execute kernal
-    MatrixKernals::dot<<<BLOCKS,THREADS>>>(data.get(), other.data.get(), result.data.get(), m, n, other.m, other.n);
-    cudaDeviceSynchronize();
-
-    return result;
+    return MatrixExpr(m, other.n, expr);
 }
 
-Matrix Matrix::transpose() const
+MatrixExpr Matrix::transpose() const
 {
+    std::function<void (double*)> expr = [this](double* accumulator)
+    {
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
+
+        // Execute kernal
+        MatrixKernals::transpose<<<BLOCKS,THREADS>>>(data.get(), accumulator, m, n);
+        cudaDeviceSynchronize();
+    };
+
     // The transpose of an MxN matrix is an NxM matrix
-    Matrix result(n, m);
-
-    // Set kernal parameters
-    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
-
-    // Execute kernal
-    MatrixKernals::transpose<<<BLOCKS,THREADS>>>(data.get(), result.data.get(), m, n);
-    cudaDeviceSynchronize();
-
-    return result;
+    return MatrixExpr(n, m, expr);
 }
 
-Matrix Matrix::row(int i) const
+MatrixExpr Matrix::row(int i) const
 {
     if (i >= m)
     {
@@ -493,22 +497,23 @@ Matrix Matrix::row(int i) const
         throw std::invalid_argument(err.str()); 
     }
 
-    Matrix result(1, n);
+    std::function<void (double*)> expr = [this, i](double* accumulator)
+    {
+        // Set kernal parameters
+        int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
-    // Set kernal parameters
-    int blocks_x = (n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x);
 
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x);
+        // Execute kernal
+        MatrixKernals::row<<<BLOCKS,THREADS>>>(data.get(), accumulator, i, m, n);
+        cudaDeviceSynchronize();
+    };
 
-    // Execute kernal
-    MatrixKernals::row<<<BLOCKS,THREADS>>>(data.get(), result.data.get(), i, m, n);
-    cudaDeviceSynchronize();
-
-    return result;
+    return MatrixExpr(1, n, expr);
 }
 
-Matrix Matrix::col(int i) const
+MatrixExpr Matrix::col(int i) const
 {
     if (i >= n)
     {
@@ -520,20 +525,20 @@ Matrix Matrix::col(int i) const
         throw std::invalid_argument(err.str()); 
     }
 
-    // The transpose of an MxN matrix is an NxM matrix
-    Matrix result(m, 1);
+    std::function<void (double*)> expr = [this, i](double* accumulator)
+    {
+        // Set kernal parameters
+        int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
-    // Set kernal parameters
-    int blocks_y = (m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_y);
 
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_y);
+        // Execute kernal
+        MatrixKernals::col<<<BLOCKS,THREADS>>>(data.get(), accumulator, i, m, n);
+        cudaDeviceSynchronize();
+    };
 
-    // Execute kernal
-    MatrixKernals::col<<<BLOCKS,THREADS>>>(data.get(), result.data.get(), i, m, n);
-    cudaDeviceSynchronize();
-
-    return result;
+    return MatrixExpr(m, 1, expr);
 }
 
 void Matrix::print() const
@@ -594,7 +599,7 @@ void Matrix::zero()
 }
 
 // Static functions
-Matrix Matrix::cross_entropy(const Matrix& a, const Matrix& b)
+MatrixExpr Matrix::cross_entropy(const Matrix& a, const Matrix& b)
 {
     if (a.m != b.m || a.n != b.n)
     {
@@ -607,110 +612,158 @@ Matrix Matrix::cross_entropy(const Matrix& a, const Matrix& b)
         throw std::invalid_argument(err.str()); 
     }
 
-    Matrix result(a.m, a.n);
+    std::function<void (double*)> expr = [a, b](double* accumulator)
+    {
+        // Set kernal parameters
+        int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
-    // Set kernal parameters
-    int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
 
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
+        // Execute kernal
+        MatrixKernals::cross_entropy<<<BLOCKS,THREADS>>>(a.data.get(), b.data.get(), accumulator, a.m, a.n);
+        cudaDeviceSynchronize();
+    };
 
-    // Execute kernal
-    MatrixKernals::cross_entropy<<<BLOCKS,THREADS>>>(a.data.get(), b.data.get(), result.data.get(), a.m, a.n);
-    cudaDeviceSynchronize();
-
-    return result;
+    return MatrixExpr(a.m, a.n, expr);
 }
 
-Matrix Matrix::sigmoid(const Matrix& a)
+MatrixExpr Matrix::sigmoid(const Matrix& a)
 {
-    Matrix result(a.m, a.n);
+    std::function<void (double*)> expr = [a](double* accumulator)
+    {
+        // Set kernal parameters
+        int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
-    // Set kernal parameters
-    int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
 
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
+        // Execute kernal
+        MatrixKernals::sigmoid<<<BLOCKS,THREADS>>>(a.data.get(), accumulator, a.m, a.n);
+        cudaDeviceSynchronize();
+    };
 
-    // Execute kernal
-    MatrixKernals::sigmoid<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
-    cudaDeviceSynchronize();
-
-    return result;
+    return MatrixExpr(a.m, a.n, expr);
 }
 
-Matrix Matrix::d_sigmoid(const Matrix& a)
+MatrixExpr Matrix::d_sigmoid(const Matrix& a)
 {
-    Matrix result(a.m, a.n);
+    std::function<void (double*)> expr = [a](double* accumulator)
+    {
+        // Set kernal parameters
+        int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
-    // Set kernal parameters
-    int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
 
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
+        // Execute kernal
+        MatrixKernals::d_sigmoid<<<BLOCKS,THREADS>>>(a.data.get(), accumulator, a.m, a.n);
+        cudaDeviceSynchronize();
+    };
 
-    // Execute kernal
-    MatrixKernals::d_sigmoid<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
-    cudaDeviceSynchronize();
-
-    return result;
+    return MatrixExpr(a.m, a.n, expr);
 }
 
-Matrix Matrix::tanh(const Matrix& a)
+MatrixExpr Matrix::tanh(const Matrix& a)
 {
-    Matrix result(a.m, a.n);
+    std::function<void (double*)> expr = [a](double* accumulator)
+    {
+        // Set kernal parameters
+        int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
-    // Set kernal parameters
-    int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
 
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
+        // Execute kernal
+        MatrixKernals::tanh<<<BLOCKS,THREADS>>>(a.data.get(), accumulator, a.m, a.n);
+        cudaDeviceSynchronize();
+    };
 
-    // Execute kernal
-    MatrixKernals::tanh<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
-    cudaDeviceSynchronize();
-
-    return result;
+    return MatrixExpr(a.m, a.n, expr);
 }
 
-Matrix Matrix::d_tanh(const Matrix& a)
+MatrixExpr Matrix::d_tanh(const Matrix& a)
 {
-    Matrix result(a.m, a.n);
+    std::function<void (double*)> expr = [a](double* accumulator)
+    {
+        // Set kernal parameters
+        int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
-    // Set kernal parameters
-    int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
 
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
+        // Execute kernal
+        MatrixKernals::d_tanh<<<BLOCKS,THREADS>>>(a.data.get(), accumulator, a.m, a.n);
+        cudaDeviceSynchronize();
+    };
 
-    // Execute kernal
-    MatrixKernals::d_tanh<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
-    cudaDeviceSynchronize();
-
-    return result;
+    return MatrixExpr(a.m, a.n, expr);
 }
 
-Matrix Matrix::log(const Matrix& a)
+MatrixExpr Matrix::log(const Matrix& a)
 {
-    Matrix result(a.m, a.n);
+    std::function<void (double*)> expr = [a](double* accumulator)
+    {
+        // Set kernal parameters
+        int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
 
-    // Set kernal parameters
-    int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-    int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+        dim3 BLOCKS(blocks_x, blocks_y);
 
-    dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-    dim3 BLOCKS(blocks_x, blocks_y);
+        // Execute kernal
+        MatrixKernals::log<<<BLOCKS,THREADS>>>(a.data.get(), accumulator, a.m, a.n);
+        cudaDeviceSynchronize();
+    };
 
-    // Execute kernal
-    MatrixKernals::log<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
-    cudaDeviceSynchronize();
+    return MatrixExpr(a.m, a.n, expr);
+}
 
-    return result;
+MatrixExpr Matrix::sum(const Matrix& a, int axis)
+{
+    if (axis == 0)
+    {
+        std::function<void (double*)> expr = [a](double* accumulator)
+        {
+            // Set kernal parameters
+            int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+            dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+            dim3 BLOCKS(blocks_x);
+
+            // Execute kernal
+            MatrixKernals::sum_vertical<<<BLOCKS,THREADS>>>(a.data.get(), accumulator, a.m, a.n);
+            cudaDeviceSynchronize();
+        };
+
+        return MatrixExpr(1, a.n, expr);
+    }
+    else if (axis == 1)
+    {
+        std::function<void (double*)> expr = [a](double* accumulator)
+        {
+            // Set kernal parameters
+            int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
+
+            dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
+            dim3 BLOCKS(blocks_y);
+
+            // Execute kernal
+            MatrixKernals::sum_horizontal<<<BLOCKS,THREADS>>>(a.data.get(), accumulator, a.m, a.n);
+            cudaDeviceSynchronize();
+        };
+
+        return MatrixExpr(a.m, 1, expr);
+    }
+
+    std::ostringstream err;
+    err << "Unknown axis: " << axis << ".";
+    throw std::invalid_argument(err.str()); 
 }
 
 double Matrix::sum(const Matrix& a)
@@ -722,46 +775,6 @@ double Matrix::sum(const Matrix& a)
     }
 
     return sum;
-}
-
-Matrix Matrix::sum(const Matrix& a, int axis)
-{
-    if (axis == 0)
-    {
-        Matrix result(1, a.n);
-
-        // Set kernal parameters
-        int blocks_x = (a.n + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-
-        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-        dim3 BLOCKS(blocks_x);
-
-        // Execute kernal
-        MatrixKernals::sum_vertical<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
-        cudaDeviceSynchronize();
-
-        return result;
-    }
-    else if (axis == 1)
-    {
-        Matrix result(a.m, 1);
-
-        // Set kernal parameters
-        int blocks_y = (a.m + THREADS_PER_DIM - 1) / THREADS_PER_DIM;
-
-        dim3 THREADS(THREADS_PER_DIM, THREADS_PER_DIM);
-        dim3 BLOCKS(blocks_y);
-
-        // Execute kernal
-        MatrixKernals::sum_horizontal<<<BLOCKS,THREADS>>>(a.data.get(), result.data.get(), a.m, a.n);
-        cudaDeviceSynchronize();
-
-        return result;
-    }
-
-    std::ostringstream err;
-    err << "Unknown axis: " << axis << ".";
-    throw std::invalid_argument(err.str()); 
 }
 
 MatrixExpr::MatrixExpr(int m, int n, std::function<void (double*)> eval) : m(m), n(n), eval(eval)

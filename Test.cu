@@ -19,8 +19,8 @@ int main()
     std::cout << "c = " << std::endl;
     c.print();
 
-    Matrix d = (a + b) + (a + b);
-    std::cout << "a*b*c = " << std::endl;
+    Matrix d = a.dot(b) + c;
+    std::cout << "a*b + c = " << std::endl;
     d.print();
 
     // int input_size = 5;

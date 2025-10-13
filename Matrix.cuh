@@ -39,28 +39,28 @@ class Matrix
         MatrixExpr operator+(double num) const;
         MatrixExpr operator*(double num) const;
 
-        Matrix dot(const Matrix& other) const;
-        Matrix transpose() const;
+        MatrixExpr dot(const Matrix& other) const;
+        MatrixExpr transpose() const;
 
-        Matrix row(int i) const;
-        Matrix col(int i) const;
+        MatrixExpr row(int i) const;
+        MatrixExpr col(int i) const;
 
         void print() const;
         void reshape(int m, int n);
         void randomize(int min, int max);
         void zero();
 
-        static Matrix cross_entropy(const Matrix& a, const Matrix& b);
+        static MatrixExpr cross_entropy(const Matrix& a, const Matrix& b);
 
-        static Matrix sigmoid(const Matrix& a);
-        static Matrix d_sigmoid(const Matrix& a);
+        static MatrixExpr sigmoid(const Matrix& a);
+        static MatrixExpr d_sigmoid(const Matrix& a);
 
-        static Matrix tanh(const Matrix& a);
-        static Matrix d_tanh(const Matrix& a);
+        static MatrixExpr tanh(const Matrix& a);
+        static MatrixExpr d_tanh(const Matrix& a);
 
-        static Matrix log(const Matrix& a);
+        static MatrixExpr log(const Matrix& a);
 
-        static Matrix sum(const Matrix& a, int axis);
+        static MatrixExpr sum(const Matrix& a, int axis);
         static double sum(const Matrix& a);
 
     private:
