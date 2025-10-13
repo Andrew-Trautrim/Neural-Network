@@ -2,8 +2,9 @@
 #define MATRIX_H
 
 #include <cuda_runtime.h>
-#include <functional>
 #include <memory>
+
+#include "MatrixExpr.cuh"
 
 class MatrixExpr;
 
@@ -68,27 +69,6 @@ class Matrix
         int n;
 
         std::shared_ptr<double> data;
-};
-
-class MatrixExpr
-{
-    friend class Matrix;
-
-    public:
-        __host__ MatrixExpr(int m, int n, std::function<void (double*)> eval);
-
-        __host__ MatrixExpr operator+(const Matrix& other) const;
-        __host__ MatrixExpr operator-(const Matrix& other) const;
-        __host__ MatrixExpr operator*(const Matrix& other) const;
-        __host__ MatrixExpr operator/(const Matrix& other) const;
-
-        __host__ static Matrix evaluate(const MatrixExpr& expr);
-
-    private:
-        int m;
-        int n;
-
-        std::function<void (double*)> eval;
 };
 
 #endif // MATRIX_H
