@@ -41,7 +41,9 @@ class Matrix
         MatrixExpr operator/(const MatrixExpr& other) const;
 
         MatrixExpr operator+(double num) const;
+        MatrixExpr operator-(double num) const;
         MatrixExpr operator*(double num) const;
+        MatrixExpr operator/(double num) const;
 
         MatrixExpr dot(const Matrix& other) const;
         MatrixExpr transpose() const;

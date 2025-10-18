@@ -1,6 +1,6 @@
 #include <vector>
 
-#include "Matrix.cuh"
+#include "Matrix/Matrix.cuh"
 
 class NeuralNetwork
 {

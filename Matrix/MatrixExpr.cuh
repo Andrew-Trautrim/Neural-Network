@@ -22,12 +22,21 @@ class MatrixExpr
         __host__ MatrixExpr(int m, int n, std::function<void (double*)> eval);
 
         __host__ MatrixExpr operator+(const Matrix& other) const;
+        // __host__ MatrixExpr operator+(const MatrixExpr& other) const;
+
         __host__ MatrixExpr operator-(const Matrix& other) const;
+        // __host__ MatrixExpr operator-(const MatrixExpr& other) const;
+
         __host__ MatrixExpr operator*(const Matrix& other) const;
+        // __host__ MatrixExpr operator*(const MatrixExpr& other) const;
+
         __host__ MatrixExpr operator/(const Matrix& other) const;
+        // __host__ MatrixExpr operator/(const MatrixExpr& other) const;
 
         __host__ MatrixExpr operator+(double num) const;
+        __host__ MatrixExpr operator-(double num) const;
         __host__ MatrixExpr operator*(double num) const;
+        __host__ MatrixExpr operator/(double num) const;
 
         __host__ static Matrix evaluate(const MatrixExpr& expr);
         __host__ static void setBuffer(const MatrixExpr& expr, double** result);

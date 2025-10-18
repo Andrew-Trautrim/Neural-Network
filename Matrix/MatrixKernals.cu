@@ -124,6 +124,66 @@ namespace MatrixKernals
         c[i] = a[i] / b[i]; 
     }
 
+    __global__ void add(double* a, double num, double* b, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+
+        int i = row * n + col;
+        b[i] = a[i] + num; 
+    }
+
+    __global__ void subtract(double* a, double num, double* b, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+
+        int i = row * n + col;
+        b[i] = a[i] - num; 
+    }
+
+    __global__ void multiply(double* a, double num, double* b, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+
+        int i = row * n + col;
+        b[i] = a[i] * num; 
+    }
+
+    __global__ void divide(double* a, double num, double* b, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+
+        int i = row * n + col;
+        b[i] = a[i] / num; 
+    }
+    
     __global__ void dot(double* a, double* b, double* c, int a_m, int a_n, int b_m, int b_n)
     {
         // Calculate row + col for each thread
@@ -142,36 +202,6 @@ namespace MatrixKernals
         }
     }
 
-    __global__ void add(double* a, double num, double* b, int m, int n)
-    {
-        // Calculate row + col for each thread
-        int row = blockIdx.y * blockDim.y + threadIdx.y;
-        int col = blockIdx.x * blockDim.x + threadIdx.x;
-
-        if (row >= m || col >= n)
-        {
-            return;
-        }
-
-        int i = row * n + col;
-        b[i] = a[i] + num; 
-    }
-
-    __global__ void multiply(double* a, double num, double* b, int m, int n)
-    {
-        // Calculate row + col for each thread
-        int row = blockIdx.y * blockDim.y + threadIdx.y;
-        int col = blockIdx.x * blockDim.x + threadIdx.x;
-
-        if (row >= m || col >= n)
-        {
-            return;
-        }
-
-        int i = row * n + col;
-        b[i] = a[i] * num; 
-    }
-    
     __global__ void transpose(double* a, double* b, int m, int n)
     {
         // Calculate row + col for each thread
