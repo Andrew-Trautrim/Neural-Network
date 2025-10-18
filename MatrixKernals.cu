@@ -227,7 +227,7 @@ namespace MatrixKernals
         curand_init(seed, i, 0, &state[i]);
     }
 
-    __global__ void randomize(curandState* state, double* a, int m, int n, int min, int max)
+    __global__ void randomize_uniform(curandState* state, double* a, int m, int n, int min, int max)
     {
         // Calculate row + col for each thread
         int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -243,6 +243,27 @@ namespace MatrixKernals
         // get random number between min and max
         curandState localState = state[i];
         double r = (curand_uniform(&localState) * (max - min)) + min;
+        state[i] = localState;
+
+        a[i] = r;
+    }
+
+    __global__ void randomize_normal(curandState* state, double* a, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+        
+        int i = col * m + row;
+
+        // get random number between min and max
+        curandState localState = state[i];
+        double r = curand_normal(&localState);
         state[i] = localState;
 
         a[i] = r;
@@ -327,6 +348,36 @@ namespace MatrixKernals
         // d/dx (tan_h) = 1 - tan_h^2
         double tanh_x = tanhf(a[i]);
         b[i] = 1 - (tanh_x * tanh_x);
+    }
+
+    __global__ void relu(double* a, double* b, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+
+        int i = row * n + col;
+        b[i] = a[i] > 0 ? a[i] : 0;
+    }
+
+    __global__ void d_relu(double* a, double* b, int m, int n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row >= m || col >= n)
+        {
+            return;
+        }
+
+        int i = row * n + col;
+        b[i] = a[i] > 0 ? 1 : 0;
     }
 
     __global__ void log(double* a, double* b, int m, int n)
