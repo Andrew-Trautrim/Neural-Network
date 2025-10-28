@@ -45,7 +45,7 @@ Matrix NeuralNetwork::predict(Matrix x)
     Matrix A = x;
     for (int i = 0; i < num_layers; ++i)
     {
-        Matrix Z = W[i].dot(A) + b[i];
+        Matrix Z = (W[i] * A) + b[i];
         A = i == num_layers - 1
             ? Matrix::sigmoid(Z)
             : Matrix::relu(Z);
@@ -77,7 +77,7 @@ void NeuralNetwork::train()
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
 
-        if ((i + 1) % 100 == 0)
+        if ((i + 1) % 1 == 0)
         {
             float diff = 0;
             cudaEventElapsedTime(&diff, start, stop);
@@ -92,55 +92,55 @@ void NeuralNetwork::train()
     complete = true;
 }
 
-double accuracy(Matrix A, Matrix Y)
-{
-    int num_correct = 0;
-    for (int i = 0; i < A.cols(); ++i)
-    {
-        int prediction = 0;
-        int actual = 0;
-        for (int j = 0; j < A.rows(); ++j)
-        {
-            if (A.get(j, i) > A.get(prediction, i))
-            {
-                prediction = j;
-            }
+// double accuracy(Matrix A, Matrix Y)
+// {
+//     int num_correct = 0;
+//     for (int i = 0; i < A.cols(); ++i)
+//     {
+//         int prediction = 0;
+//         int actual = 0;
+//         for (int j = 0; j < A.rows(); ++j)
+//         {
+//             if (A.get(j, i) > A.get(prediction, i))
+//             {
+//                 prediction = j;
+//             }
             
-            if (Y.get(j, i) > Y.get(actual, i))
-            {
-                actual = j;
-            }
-        }
+//             if (Y.get(j, i) > Y.get(actual, i))
+//             {
+//                 actual = j;
+//             }
+//         }
 
-        if (prediction == actual)
-        {
-            num_correct++;
-        }
-    }
+//         if (prediction == actual)
+//         {
+//             num_correct++;
+//         }
+//     }
 
-    return (double)num_correct / A.cols();
-}
+//     return (double)num_correct / A.cols();
+// }
 
-void NeuralNetwork::test()
-{
-    std::cout << "Training set: " << std::endl;
+// void NeuralNetwork::test()
+// {
+//     std::cout << "Training set: " << std::endl;
 
-    Matrix train_result = predict(training_set_X);
+//     Matrix train_result = predict(training_set_X);
 
-    double cost_train = cost(train_result, training_set_Y);
-    std::cout << "\tCost = " << cost_train << std::endl;
-    double accuracy_train = accuracy(train_result, training_set_Y);
-    std::cout << "\tAccuracy = " << accuracy_train << std::endl << std::endl;
+//     double cost_train = cost(train_result, training_set_Y);
+//     std::cout << "\tCost = " << cost_train << std::endl;
+//     double accuracy_train = accuracy(train_result, training_set_Y);
+//     std::cout << "\tAccuracy = " << accuracy_train << std::endl << std::endl;
     
-    std::cout << "Testing set: " << std::endl;
+//     std::cout << "Testing set: " << std::endl;
 
-    Matrix test_result = predict(test_set_X);
+//     Matrix test_result = predict(test_set_X);
 
-    double cost_test = cost(test_result, test_set_Y);
-    std::cout << "\tCost = " << cost_test << std::endl;
-    double accuracy_test = accuracy(test_result, test_set_Y);
-    std::cout << "\tAccuracy = " << accuracy_test << std::endl << std::endl;
-}
+//     double cost_test = cost(test_result, test_set_Y);
+//     std::cout << "\tCost = " << cost_test << std::endl;
+//     double accuracy_test = accuracy(test_result, test_set_Y);
+//     std::cout << "\tAccuracy = " << accuracy_test << std::endl << std::endl;
+// }
 
 void NeuralNetwork::print()
 {
@@ -178,7 +178,7 @@ void NeuralNetwork::forward_propagation()
     Matrix prev_A = training_set_X;
     for (int i = 0; i < num_layers; ++i)
     {
-        Z[i] = W[i].dot(prev_A) + b[i];
+        Z[i] = (W[i] * prev_A) + b[i];
         A[i] = i == num_layers - 1
             ? Matrix::sigmoid(Z[i])
             : Matrix::relu(Z[i]);
@@ -195,17 +195,19 @@ void NeuralNetwork::backward_propagation()
     for (int i = num_layers - 1; i >= 0; --i)
     {
         // calculate gradients
-        Matrix layer_input = i == 0 ? training_set_X : A[i - 1];
-        dW[i] = dZ[i].dot(MatrixExpr::evaluate(layer_input.transpose())) * (1 / (double)training_set_X.cols());
-        db[i] = Matrix::sum(dZ[i], 1) * (1 / (double)training_set_X.cols());
+        Matrix layer_input = i == 0 
+            ? training_set_X 
+            : A[i - 1];
+        dW[i] = (dZ[i] * layer_input.transpose()) / (double)training_set_X.cols();
+        db[i] = dZ[i].sum(1) / (double)training_set_X.cols();
         
         // update parameters
-        W[i] = W[i] - dW[i] * learning_rate;
-        b[i] = b[i] - db[i] * learning_rate;
+        W[i] = W[i] - (dW[i] * learning_rate);
+        b[i] = b[i] - (db[i] * learning_rate);
 
         if (i != 0)
         {
-            dZ[i - 1] = MatrixExpr::evaluate(W[i].transpose()).dot(dZ[i]) * Matrix::d_relu(Z[i - 1]);
+            dZ[i - 1] = (W[i].transpose() * dZ[i]) & Matrix::d_relu(Z[i - 1]);
         }
     }
 }
@@ -213,5 +215,5 @@ void NeuralNetwork::backward_propagation()
 double NeuralNetwork::cost(Matrix A, Matrix Y)
 {
     Matrix loss = Matrix::cross_entropy(A, Y);
-    return (1 / (double)training_set_X.cols()) * Matrix::sum(loss);
+    return  loss.sum() / (double)training_set_X.cols();
 }

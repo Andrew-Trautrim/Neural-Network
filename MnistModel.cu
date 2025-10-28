@@ -28,13 +28,13 @@ class MnistModel
 
         void train()
         {
-            network.test();
+            // network.test();
 
             std::cout << "Starting training..." << std::endl;
             network.train();
             std::cout << std::endl;
             
-            network.test();
+            // network.test();
         }
 
     private:

@@ -93,8 +93,27 @@ namespace MatrixKernals
         int i = row * n + col;
         c[i] = a[i] - b[col]; 
     }
+    
+    __global__ void multiply(double* a, double* b, double* c, int a_m, int a_n, int b_m, int b_n)
+    {
+        // Calculate row + col for each thread
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-    __global__ void multiply(double* a, double* b, double* c, int m, int n)
+        if (row >= a_m || col >= b_n)
+        {
+            return;
+        }
+
+        int idx = row * b_n + col;
+        c[idx] = 0;
+        for (int i = 0; i < a_n; ++i)
+        {
+            c[idx] += a[row * a_n + i] * b[i * b_n + col];
+        }
+    }
+
+    __global__ void hadamardProduct(double* a, double* b, double* c, int m, int n)
     {
         // Calculate row + col for each thread
         int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -182,24 +201,6 @@ namespace MatrixKernals
 
         int i = row * n + col;
         b[i] = a[i] / num; 
-    }
-    
-    __global__ void dot(double* a, double* b, double* c, int a_m, int a_n, int b_m, int b_n)
-    {
-        // Calculate row + col for each thread
-        int row = blockIdx.y * blockDim.y + threadIdx.y;
-        int col = blockIdx.x * blockDim.x + threadIdx.x;
-
-        if (row >= a_m || col >= b_n)
-        {
-            return;
-        }
-
-        int idx = row * b_n + col; 
-        for (int i = 0; i < a_n; ++i)
-        {
-            c[idx] += a[row * a_n + i] * b[i * b_n + col];
-        }
     }
 
     __global__ void transpose(double* a, double* b, int m, int n)
