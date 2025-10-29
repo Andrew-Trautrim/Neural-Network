@@ -35,8 +35,6 @@ NeuralNetwork::NeuralNetwork(
         A(num_layers),
         dA(num_layers)
 {
-    complete = false;
-
     initialize_parameters(layer_sizes);
 }
 
@@ -56,11 +54,6 @@ Matrix NeuralNetwork::predict(Matrix x)
 
 void NeuralNetwork::train()
 {
-    if (complete)
-    {
-        throw std::logic_error("Neural network already completed learning."); 
-    }
-
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
@@ -77,70 +70,70 @@ void NeuralNetwork::train()
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
 
-        if ((i + 1) % 1 == 0)
+        if ((i + 1) % 10 == 0)
         {
             float diff = 0;
             cudaEventElapsedTime(&diff, start, stop);
             double c = cost(A[num_layers - 1], training_set_Y);
             std::cout << "Epoch " << i + 1 << ": C = " << c << ", t = " << diff << "ms" << std::endl;
+
+            test();
         }
     }
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
-
-    complete = true;
 }
 
-// double accuracy(Matrix A, Matrix Y)
-// {
-//     int num_correct = 0;
-//     for (int i = 0; i < A.cols(); ++i)
-//     {
-//         int prediction = 0;
-//         int actual = 0;
-//         for (int j = 0; j < A.rows(); ++j)
-//         {
-//             if (A.get(j, i) > A.get(prediction, i))
-//             {
-//                 prediction = j;
-//             }
+double accuracy(Matrix A, Matrix Y)
+{
+    int num_correct = 0;
+    for (int i = 0; i < A.cols(); ++i)
+    {
+        int prediction = 0;
+        int actual = 0;
+        for (int j = 0; j < A.rows(); ++j)
+        {
+            if (A.get(j, i) > A.get(prediction, i))
+            {
+                prediction = j;
+            }
             
-//             if (Y.get(j, i) > Y.get(actual, i))
-//             {
-//                 actual = j;
-//             }
-//         }
+            if (Y.get(j, i) > Y.get(actual, i))
+            {
+                actual = j;
+            }
+        }
 
-//         if (prediction == actual)
-//         {
-//             num_correct++;
-//         }
-//     }
+        if (prediction == actual)
+        {
+            num_correct++;
+        }
+    }
 
-//     return (double)num_correct / A.cols();
-// }
+    return (double)num_correct / A.cols();
+}
 
-// void NeuralNetwork::test()
-// {
-//     std::cout << "Training set: " << std::endl;
+void NeuralNetwork::test()
+{
+    std::cout << "Training set: " << std::endl;
 
-//     Matrix train_result = predict(training_set_X);
+    Matrix train_result = predict(training_set_X);
 
-//     double cost_train = cost(train_result, training_set_Y);
-//     std::cout << "\tCost = " << cost_train << std::endl;
-//     double accuracy_train = accuracy(train_result, training_set_Y);
-//     std::cout << "\tAccuracy = " << accuracy_train << std::endl << std::endl;
+    double cost_train = cost(train_result, training_set_Y);
+    std::cout << "\tCost = " << cost_train << std::endl;
+    double accuracy_train = accuracy(train_result, training_set_Y);
+    std::cout << "\tAccuracy = " << accuracy_train << std::endl;
     
-//     std::cout << "Testing set: " << std::endl;
+    std::cout << "Testing set: " << std::endl;
 
-//     Matrix test_result = predict(test_set_X);
+    Matrix test_result = predict(test_set_X);
 
-//     double cost_test = cost(test_result, test_set_Y);
-//     std::cout << "\tCost = " << cost_test << std::endl;
-//     double accuracy_test = accuracy(test_result, test_set_Y);
-//     std::cout << "\tAccuracy = " << accuracy_test << std::endl << std::endl;
-// }
+    double cost_test = cost(test_result, test_set_Y);
+    std::cout << "\tCost = " << cost_test << std::endl;
+    double accuracy_test = accuracy(test_result, test_set_Y);
+    std::cout << "\tAccuracy = " << accuracy_test << std::endl;
+}
 
 void NeuralNetwork::print()
 {

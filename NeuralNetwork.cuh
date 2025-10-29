@@ -15,8 +15,6 @@ class NeuralNetwork
         void print();
 
     private:
-        bool complete;
-
         // hyperparameters
         Matrix training_set_X; 
         Matrix training_set_Y;
